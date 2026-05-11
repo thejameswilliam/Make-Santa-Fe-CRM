@@ -1,0 +1,99 @@
+import Link from "next/link";
+
+import { FavoriteContactButton } from "@/app/components/favorite-contact-button";
+import { LANE_META } from "@/lib/constants";
+import type { ContactListItem } from "@/lib/types";
+import { formatDateTime } from "@/lib/utils";
+
+function buildInitials(name: string) {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) {
+    return "?";
+  }
+
+  return parts.map((part) => part.charAt(0).toUpperCase()).join("");
+}
+
+export function ContactCard({
+  contact,
+  eyebrow = "Primary record"
+}: {
+  contact: ContactListItem;
+  eyebrow?: string;
+}) {
+  return (
+    <article className={`contact-card contact-card-rich${contact.isActive ? "" : " contact-card-inactive"}`}>
+      <div className="contact-card-favorite">
+        <FavoriteContactButton
+          className="contact-card-favorite-button"
+          contactId={contact.id}
+          initialIsFavorite={contact.isFavorite}
+        />
+      </div>
+
+      <Link className="contact-card-link" href={`/people/${contact.id}`}>
+        <div className="contact-card-avatar-shell" aria-hidden="true">
+          {contact.photoUrl ? (
+            <img
+              alt={contact.displayName}
+              className="contact-card-avatar-image"
+              loading="lazy"
+              src={contact.photoUrl}
+            />
+          ) : (
+            <div className="contact-card-avatar-fallback">{buildInitials(contact.displayName)}</div>
+          )}
+        </div>
+
+        <div className="row-between contact-card-header">
+          <div className="contact-meta">
+            <span className="contact-eyebrow">{eyebrow}</span>
+            <strong className="contact-card-name">{contact.displayName}</strong>
+            <span className="muted contact-card-email">{contact.primaryEmail ?? "No primary email yet"}</span>
+          </div>
+
+          <div className="pill-row contact-card-statuses">
+            <span className={`status-pill ${contact.isActive ? "status-pill-active" : "status-pill-inactive"}`}>
+              {contact.isActive ? "Active" : "Inactive"}
+            </span>
+          </div>
+        </div>
+
+        <div className="contact-card-section">
+          <span className="contact-card-section-label">Interaction types</span>
+          <div className="pill-row contact-card-lanes">
+            {contact.recentLaneKeys.length > 0 ? (
+              contact.recentLaneKeys.map((lane) => (
+                <span
+                  className="lane-pill"
+                  key={`${contact.id}-${lane}`}
+                  style={{
+                    background: LANE_META[lane].color,
+                    color: LANE_META[lane].textColor,
+                    borderColor: "transparent"
+                  }}
+                >
+                  {LANE_META[lane].label}
+                </span>
+              ))
+            ) : (
+              <span className="muted">No interactions yet</span>
+            )}
+          </div>
+        </div>
+
+        <div className="contact-card-footer">
+          <span className="contact-card-section-label">Last interaction</span>
+          <span className="contact-card-timestamp">
+            {contact.lastInteractionAt ? formatDateTime(contact.lastInteractionAt) : "No interactions yet"}
+          </span>
+        </div>
+      </Link>
+    </article>
+  );
+}

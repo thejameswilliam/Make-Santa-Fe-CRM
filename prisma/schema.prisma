@@ -1,0 +1,274 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SourceSystem {
+  WOOCOMMERCE
+  GRAVITY_FORMS
+  SIGN_IN
+  RESERVATIONS
+  NEWSLETTER
+  MANUAL
+}
+
+enum LaneKey {
+  DONOR
+  MEMBER
+  VOLUNTEER
+  RESERVER
+  SPACE_USE
+  PURCHASE
+  CLASS
+  COMMUNITY_EVENT
+  EMAIL
+  NOTES
+  OTHER
+}
+
+enum SyncMode {
+  BACKFILL
+  INCREMENTAL
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum ReviewStatus {
+  PENDING
+  ASSIGNED
+  IGNORED
+}
+
+enum ProfileFieldKey {
+  FULL_NAME
+  PHONE
+  ADDRESS
+}
+
+model Contact {
+  id                String                @id @default(cuid())
+  displayName       String?
+  isFavorite        Boolean               @default(false)
+  mergedIntoId      String?
+  primaryEmailId    String?               @unique
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  mergedInto        Contact?              @relation("ContactMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedContacts    Contact[]             @relation("ContactMerge")
+  primaryEmail      ContactEmail?         @relation("PrimaryEmail", fields: [primaryEmailId], references: [id], onDelete: SetNull)
+  emails            ContactEmail[]        @relation("ContactEmails")
+  externalIds       ExternalIdentity[]
+  profileValues     ContactProfileValue[]
+  timelineEvents    TimelineEvent[]
+  manualInteractions ManualInteraction[]
+  assignedUnmatched UnmatchedEvent[]      @relation("AssignedContact")
+  mergeAuditsPrimary MergeAudit[]         @relation("MergeAuditPrimary")
+  mergeAuditsMerged  MergeAudit[]         @relation("MergeAuditMerged")
+
+  @@index([mergedIntoId])
+}
+
+model ContactEmail {
+  id              String    @id @default(cuid())
+  contactId       String
+  email           String
+  normalizedEmail String    @unique
+  isPrimary       Boolean   @default(false)
+  source          SourceSystem?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  contact         Contact   @relation("ContactEmails", fields: [contactId], references: [id], onDelete: Cascade)
+  primaryFor      Contact?  @relation("PrimaryEmail")
+
+  @@index([contactId])
+}
+
+model ExternalIdentity {
+  id           String       @id @default(cuid())
+  contactId    String
+  source       SourceSystem
+  externalType String
+  externalId   String
+  metadata     Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([source, externalType, externalId])
+  @@index([contactId])
+}
+
+model ContactProfileValue {
+  id           String          @id @default(cuid())
+  contactId    String
+  fieldKey     ProfileFieldKey
+  source       SourceSystem
+  displayValue String
+  valueJson    Json?
+  observedAt   DateTime
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  contact      Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, fieldKey, source])
+  @@index([contactId, fieldKey])
+}
+
+model TimelineEvent {
+  id            String      @id @default(cuid())
+  contactId     String
+  source        SourceSystem
+  sourceEventId String
+  sourceCursor  String?
+  occurredAt    DateTime
+  importedAt    DateTime    @default(now())
+  eventKind     String
+  laneKey       LaneKey
+  title         String
+  summary       String?
+  amountCents   Int?
+  currency      String?
+  roleKey       String?
+  metadata      Json?
+  rawPayload    Json
+  mappingRuleId String?
+  syncRunId     String?
+  contact       Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  mappingRule   MappingRule? @relation(fields: [mappingRuleId], references: [id], onDelete: SetNull)
+  syncRun       SyncRun?    @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+
+  @@unique([source, sourceEventId])
+  @@index([contactId, occurredAt])
+}
+
+model InteractionType {
+  id                 String              @id @default(cuid())
+  name               String
+  slug               String              @unique
+  laneKey            LaneKey
+  colorToken         String
+  isActive           Boolean             @default(true)
+  isSystem           Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  manualInteractions ManualInteraction[]
+}
+
+model ManualInteraction {
+  id                String           @id @default(cuid())
+  contactId         String
+  interactionTypeId String
+  occurredAt        DateTime
+  title             String
+  body              String?
+  laneKey           LaneKey
+  createdByUserId   String?
+  createdByName     String?
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  contact           Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  interactionType   InteractionType  @relation(fields: [interactionTypeId], references: [id], onDelete: Restrict)
+
+  @@index([contactId, occurredAt])
+}
+
+model MappingRule {
+  id            String       @id @default(cuid())
+  source        SourceSystem
+  name          String
+  isActive      Boolean      @default(true)
+  priority      Int          @default(100)
+  matcherType   String
+  matcherValue  String
+  eventKind     String
+  laneKey       LaneKey
+  titleTemplate String?
+  roleKey       String?
+  metadata      Json?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  timelineEvents TimelineEvent[]
+
+  @@index([source, isActive, priority])
+}
+
+model UnmatchedEvent {
+  id              String        @id @default(cuid())
+  source          SourceSystem
+  sourceEventId   String
+  sourceCursor    String?
+  occurredAt      DateTime
+  eventKind       String?
+  laneKey         LaneKey?
+  candidateEmail  String?
+  normalizedEmail String?
+  status          ReviewStatus  @default(PENDING)
+  reason          String
+  rawPayload      Json
+  metadata        Json?
+  assignedContactId String?
+  resolvedAt      DateTime?
+  syncRunId       String?
+  assignedContact Contact?      @relation("AssignedContact", fields: [assignedContactId], references: [id], onDelete: SetNull)
+  syncRun         SyncRun?      @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+
+  @@unique([source, sourceEventId])
+  @@index([status, occurredAt])
+  @@index([normalizedEmail])
+}
+
+model MergeAudit {
+  id                  String   @id @default(cuid())
+  primaryContactId    String
+  mergedContactId     String
+  mergedByUserId      String?
+  mergedByName        String?
+  snapshot            Json
+  createdAt           DateTime @default(now())
+  primaryContact      Contact  @relation("MergeAuditPrimary", fields: [primaryContactId], references: [id], onDelete: Cascade)
+  mergedContact       Contact  @relation("MergeAuditMerged", fields: [mergedContactId], references: [id], onDelete: Cascade)
+
+  @@index([primaryContactId, createdAt])
+}
+
+model SyncRun {
+  id            String      @id @default(cuid())
+  source        SourceSystem
+  mode          SyncMode
+  status        SyncStatus  @default(PENDING)
+  cursorBefore  String?
+  cursorAfter   String?
+  fetchedCount  Int         @default(0)
+  importedCount Int         @default(0)
+  unmatchedCount Int        @default(0)
+  errorCount    Int         @default(0)
+  errorLog      Json?
+  startedAt     DateTime    @default(now())
+  finishedAt    DateTime?
+  timelineEvents TimelineEvent[]
+  unmatchedEvents UnmatchedEvent[]
+
+  @@index([source, startedAt])
+}
+
+model SourceSyncState {
+  source               SourceSystem @id
+  lastCursor           String?
+  lastBackfillPage     Int?
+  lastBackfillCompletedAt DateTime?
+  lastSuccessfulSyncAt DateTime?
+  lastSyncRunId        String?
+  metadata             Json?
+  updatedAt            DateTime     @updatedAt
+  createdAt            DateTime     @default(now())
+}
