@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, redirectFromRequest } from "@/lib/auth";
 import { findReviewEventTypeByKey } from "@/lib/constants";
 import { updateUnmatchedEventClassification } from "@/lib/crm";
 import type { ReviewEventTypeKey } from "@/lib/constants";
@@ -13,7 +13,7 @@ export async function POST(
   if (!session) {
     return request.headers.get("content-type")?.includes("application/json")
       ? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      : NextResponse.redirect(new URL("/login", request.url));
+      : redirectFromRequest(request, "/login");
   }
 
   const { eventId } = await params;
@@ -31,7 +31,7 @@ export async function POST(
   if (!eventType) {
     return isJson
       ? NextResponse.json({ error: "Interaction type not found." }, { status: 400 })
-      : NextResponse.redirect(new URL(returnTo, request.url));
+      : redirectFromRequest(request, returnTo);
   }
 
   await updateUnmatchedEventClassification(eventId, reviewEventTypeKey);
@@ -44,5 +44,5 @@ export async function POST(
     });
   }
 
-  return NextResponse.redirect(new URL(returnTo, request.url));
+  return redirectFromRequest(request, returnTo);
 }

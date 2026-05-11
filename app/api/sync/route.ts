@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, redirectFromRequest } from "@/lib/auth";
 import { SOURCE_SYSTEMS, type SourceSystemKey } from "@/lib/constants";
 import { ensureFreshData, getSyncActivityState, runBackfill, startBackfill } from "@/lib/sync/engine";
 
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   }
 
-  return NextResponse.redirect(new URL(returnTo, request.url));
+  return redirectFromRequest(request, returnTo);
 }
 
 export async function GET(request: NextRequest) {

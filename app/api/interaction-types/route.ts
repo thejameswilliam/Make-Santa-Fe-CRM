@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, redirectFromRequest } from "@/lib/auth";
 import { saveInteractionType } from "@/lib/crm";
 import { type LaneKey } from "@/lib/constants";
 
 export async function POST(request: NextRequest) {
   const session = getSessionFromRequest(request);
   if (!session) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return redirectFromRequest(request, "/login");
   }
 
   const formData = await request.formData();
@@ -18,5 +18,5 @@ export async function POST(request: NextRequest) {
     laneKey: String(formData.get("laneKey") ?? "OTHER") as LaneKey
   });
 
-  return NextResponse.redirect(new URL(returnTo, request.url));
+  return redirectFromRequest(request, returnTo);
 }

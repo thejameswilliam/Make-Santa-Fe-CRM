@@ -76,6 +76,7 @@ envs:
 
 # Add these encrypted app-level environment variables in DigitalOcean before the first production deploy:
 # CRM_SESSION_SECRET=<long-random-secret>
+# CRM_APP_BASE_URL=https://your-app-domain.ondigitalocean.app
 # WORDPRESS_BASE_URL=https://www.makesantafe.org
 # WORDPRESS_CRM_BRIDGE_TOKEN=<shared-token-matching-wp>
 

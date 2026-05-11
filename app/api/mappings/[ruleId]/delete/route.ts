@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, redirectFromRequest } from "@/lib/auth";
 import { deleteMappingRule } from "@/lib/crm";
 
 export async function POST(
@@ -9,7 +9,7 @@ export async function POST(
 ) {
   const session = getSessionFromRequest(request);
   if (!session) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return redirectFromRequest(request, "/login");
   }
 
   const { ruleId } = await params;
@@ -20,5 +20,5 @@ export async function POST(
     await deleteMappingRule(ruleId);
   } catch {}
 
-  return NextResponse.redirect(new URL(returnTo, request.url));
+  return redirectFromRequest(request, returnTo);
 }

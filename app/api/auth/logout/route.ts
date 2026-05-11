@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
-import { clearSessionCookie } from "@/lib/auth";
+import { clearSessionCookie, redirectFromRequest } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
-  const response = NextResponse.redirect(new URL("/login", request.url));
+  const response = redirectFromRequest(request, "/login");
   clearSessionCookie(response);
   return response;
 }

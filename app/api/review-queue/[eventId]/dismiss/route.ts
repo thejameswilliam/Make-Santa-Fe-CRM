@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, redirectFromRequest } from "@/lib/auth";
 import { dismissUnmatchedEvent } from "@/lib/crm";
 
 export async function POST(
@@ -11,7 +11,7 @@ export async function POST(
   if (!session) {
     return request.headers.get("content-type")?.includes("application/json")
       ? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      : NextResponse.redirect(new URL("/login", request.url));
+      : redirectFromRequest(request, "/login");
   }
 
   const { eventId } = await params;
@@ -25,5 +25,5 @@ export async function POST(
     return NextResponse.json({ dismissedEventId: eventId });
   }
 
-  return NextResponse.redirect(new URL(returnTo, request.url));
+  return redirectFromRequest(request, returnTo);
 }

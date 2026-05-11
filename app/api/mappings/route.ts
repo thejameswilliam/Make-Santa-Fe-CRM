@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, redirectFromRequest } from "@/lib/auth";
 import { saveMappingRule } from "@/lib/crm";
 import { parseOptionalNumber } from "@/lib/utils";
 import { type LaneKey, type SourceSystemKey } from "@/lib/constants";
@@ -8,7 +8,7 @@ import { type LaneKey, type SourceSystemKey } from "@/lib/constants";
 export async function POST(request: NextRequest) {
   const session = getSessionFromRequest(request);
   if (!session) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return redirectFromRequest(request, "/login");
   }
 
   const formData = await request.formData();
@@ -24,5 +24,5 @@ export async function POST(request: NextRequest) {
     priority: parseOptionalNumber(formData.get("priority")) ?? 100
   });
 
-  return NextResponse.redirect(new URL(returnTo, request.url));
+  return redirectFromRequest(request, returnTo);
 }

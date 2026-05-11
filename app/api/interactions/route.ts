@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, redirectFromRequest } from "@/lib/auth";
 import { createManualInteraction } from "@/lib/crm";
 
 export async function POST(request: NextRequest) {
   const session = getSessionFromRequest(request);
   if (!session) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return redirectFromRequest(request, "/login");
   }
 
   const formData = await request.formData();
@@ -28,5 +28,5 @@ export async function POST(request: NextRequest) {
     actor: session
   });
 
-  return NextResponse.redirect(new URL(returnTo, request.url));
+  return redirectFromRequest(request, returnTo);
 }

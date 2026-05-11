@@ -1,12 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 import { config } from "@/lib/config";
-import { setSessionCookie } from "@/lib/auth";
+import { redirectFromRequest, setSessionCookie } from "@/lib/auth";
 import { exchangeWordPressCredentials } from "@/lib/wordpress";
-
-function redirectTo(request: NextRequest, target: string) {
-  return NextResponse.redirect(new URL(target, request.url));
-}
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -24,10 +20,10 @@ export async function POST(request: NextRequest) {
           }
         : await exchangeWordPressCredentials(username, applicationPassword);
 
-    const response = redirectTo(request, returnTo);
+    const response = redirectFromRequest(request, returnTo);
     setSessionCookie(response, user);
     return response;
   } catch {
-    return redirectTo(request, "/login");
+    return redirectFromRequest(request, "/login");
   }
 }
