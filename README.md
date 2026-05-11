@@ -97,7 +97,6 @@ The cleanest production path for this app is DigitalOcean App Platform plus a ma
 
 1. Push this repo to GitHub, GitLab, or Bitbucket.
 2. Update `.do/app.yaml`:
-   - replace `your-github-org/make-santa-fe-crm` with the real repo path
    - optionally rename the app or database cluster
 3. In production, set these app-level environment variables in DigitalOcean:
    - `CRM_SESSION_SECRET`
@@ -105,6 +104,7 @@ The cleanest production path for this app is DigitalOcean App Platform plus a ma
    - `WORDPRESS_CRM_BRIDGE_TOKEN`
    - `ALLOW_DEV_LOGIN=false`
 4. Copy the WordPress bridge plugin into the production WordPress site and make sure its token matches the CRM token.
+5. Keep `DATABASE_URL` bound from the managed database with `RUN_AND_BUILD_TIME` scope so Prisma commands can run during build and pre-deploy.
 
 ### Create the app
 
