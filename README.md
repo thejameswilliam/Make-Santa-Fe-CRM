@@ -79,6 +79,61 @@ npm run dev
    - `WORDPRESS_CRM_BRIDGE_TOKEN`
 6. For staff login, create WordPress Application Passwords for each CRM user. The CRM login page exchanges those credentials for a local CRM session cookie.
 
+## DigitalOcean deployment
+
+The cleanest production path for this app is DigitalOcean App Platform plus a managed PostgreSQL database.
+
+### What is included for deployment
+
+- `.do/app.yaml`
+  - App Platform spec for one web service
+  - managed PostgreSQL database component
+  - pre-deploy schema sync job
+  - health check at `/api/health`
+- `.env.example`
+  - local/prod variable reference
+
+### Before you deploy
+
+1. Push this repo to GitHub, GitLab, or Bitbucket.
+2. Update `.do/app.yaml`:
+   - replace `your-github-org/make-santa-fe-crm` with the real repo path
+   - optionally rename the app or database cluster
+3. In production, set these app-level environment variables in DigitalOcean:
+   - `CRM_SESSION_SECRET`
+   - `WORDPRESS_BASE_URL`
+   - `WORDPRESS_CRM_BRIDGE_TOKEN`
+   - `ALLOW_DEV_LOGIN=false`
+4. Copy the WordPress bridge plugin into the production WordPress site and make sure its token matches the CRM token.
+
+### Create the app
+
+1. In DigitalOcean, create a new App Platform app from the repo.
+2. Import or mirror the settings from `.do/app.yaml`.
+3. Keep the managed PostgreSQL database component.
+4. Make sure the web service uses:
+   - build command: `npm run db:generate && npm run build`
+   - run command: `npm run start:do`
+5. Make sure the pre-deploy job uses:
+   - build command: `npm run db:generate`
+   - run command: `npm run db:push:prod`
+6. Confirm the health check path is `/api/health`.
+
+### Add the custom domain
+
+After the first successful deploy:
+
+1. In App Platform Networking, add `crm.makesantafe.org`.
+2. If your DNS is managed outside DigitalOcean, point the `crm` host to the App Platform CNAME target.
+3. If your DNS uses CAA records, allow both `letsencrypt.org` and `pki.goog`.
+
+### First production checklist
+
+1. Confirm `https://crm.makesantafe.org/api/health` returns `ok: true`.
+2. Log in with a real WordPress application password.
+3. Run the first full backfill from the CRM.
+4. Verify WooCommerce, Gravity Forms, newsletter, volunteer, sign-in, and reservation data are arriving correctly.
+
 ## Data flow
 
 - WordPress remains the system of record.

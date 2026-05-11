@@ -1,0 +1,86 @@
+name: crm-makesantafe
+region: nyc
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+
+databases:
+  - name: crm-db
+    engine: PG
+    version: "16"
+    production: true
+    cluster_name: crm-makesantafe-db
+    db_name: make_santa_fe_crm
+    db_user: msfcrm
+
+services:
+  - name: web
+    environment_slug: node-js
+    github:
+      repo: your-github-org/make-santa-fe-crm
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    build_command: npm run db:generate && npm run build
+    run_command: npm run start:do
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 20
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 5
+    liveness_health_check:
+      http_path: /api/health
+      initial_delay_seconds: 30
+      period_seconds: 15
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 5
+
+jobs:
+  - name: schema-sync
+    kind: PRE_DEPLOY
+    environment_slug: node-js
+    github:
+      repo: your-github-org/make-santa-fe-crm
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    build_command: npm run db:generate
+    run_command: npm run db:push:prod
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+
+envs:
+  - key: NODE_ENV
+    value: production
+    scope: RUN_TIME
+    type: GENERAL
+  - key: ALLOW_DEV_LOGIN
+    value: "false"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: CRM_SYNC_FRESHNESS_SECONDS
+    value: "300"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: DATABASE_URL
+    value: ${crm-db.DATABASE_PRIVATE_URL}
+    scope: RUN_TIME
+    type: GENERAL
+
+# Add these encrypted app-level environment variables in DigitalOcean before the first production deploy:
+# CRM_SESSION_SECRET=<long-random-secret>
+# WORDPRESS_BASE_URL=https://www.makesantafe.org
+# WORDPRESS_CRM_BRIDGE_TOKEN=<shared-token-matching-wp>
+
+# After the app is live, add the custom domain in App Platform networking:
+# domains:
+#   - domain: crm.makesantafe.org
+#     type: PRIMARY
+#     minimum_tls_version: "1.2"
