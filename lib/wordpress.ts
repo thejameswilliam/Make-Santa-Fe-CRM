@@ -27,10 +27,13 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 }
 
 export async function exchangeWordPressCredentials(username: string, applicationPassword: string) {
+  const normalizedUsername = username.trim();
+  const normalizedApplicationPassword = applicationPassword.replace(/\s+/g, "");
+
   const response = await fetch(buildWordPressUrl("/wp-json/make-santa-fe-crm/v1/auth/exchange"), {
     method: "GET",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${username}:${applicationPassword}`).toString("base64")}`
+      Authorization: `Basic ${Buffer.from(`${normalizedUsername}:${normalizedApplicationPassword}`).toString("base64")}`
     },
     cache: "no-store"
   });

@@ -3,11 +3,18 @@ import { redirect } from "next/navigation";
 import { config } from "@/lib/config";
 import { getSession } from "@/lib/auth";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const session = await getSession();
   if (session) {
     redirect("/");
   }
+
+  const { error } = await searchParams;
+  const errorMessage = error?.trim() ? error.trim() : "";
 
   return (
     <div className="login-shell">
@@ -18,6 +25,8 @@ export default async function LoginPage() {
         </div>
 
         <div className="divider" />
+
+        {errorMessage ? <div className="inline-alert inline-alert-error">{errorMessage}</div> : null}
 
         <form action="/api/auth/wordpress/exchange" className="section-stack" method="post">
           <div className="field-grid">
