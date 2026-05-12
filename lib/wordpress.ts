@@ -26,7 +26,17 @@ function buildWordPressUrl(path: string) {
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`WordPress bridge request failed (${response.status}): ${body}`);
+    const compactBody = body
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 220);
+
+    throw new Error(
+      compactBody
+        ? `WordPress bridge request failed (${response.status}): ${compactBody}`
+        : `WordPress bridge request failed (${response.status}).`
+    );
   }
 
   return (await response.json()) as T;

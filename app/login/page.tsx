@@ -6,15 +6,18 @@ import { getSession } from "@/lib/auth";
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; force?: string }>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const session = await getSession();
-  if (session) {
+  const error = resolvedSearchParams.error?.trim() ?? "";
+  const force = resolvedSearchParams.force?.trim() === "1";
+
+  if (session && !force && !error) {
     redirect("/");
   }
 
-  const { error } = await searchParams;
-  const errorMessage = error?.trim() ? error.trim() : "";
+  const errorMessage = error || "";
 
   return (
     <div className="login-shell">

@@ -199,6 +199,10 @@ textarea::placeholder {
   justify-content: flex-end;
 }
 
+.runtime-issue-panel {
+  max-width: 60rem;
+}
+
 .status-pill,
 .lane-pill {
   display: inline-flex;

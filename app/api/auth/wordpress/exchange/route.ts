@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
 
   function redirectToLoginWithError(message: string) {
     const loginUrl = buildRequestAppUrl(request, "/login");
-    loginUrl.searchParams.set("error", message);
+    loginUrl.searchParams.set("error", message.slice(0, 220));
     return Response.redirect(loginUrl);
   }
 
@@ -32,18 +32,18 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("WordPress login exchange failed", error);
 
-    const message =
-      error instanceof Error
-        ? error.message.includes("404")
-          ? "WordPress CRM bridge auth endpoint was not found. Check WORDPRESS_BASE_URL and confirm the bridge plugin is active."
-          : error.message.includes("401") || error.message.includes("403")
-            ? "WordPress rejected the username or application password."
-            : error.message.includes("WORDPRESS_BASE_URL")
-              ? "WORDPRESS_BASE_URL is not configured correctly."
-              : error.message.includes("fetch failed")
-                ? "The CRM could not reach WordPress. Check the production WordPress URL and network access."
-                : error.message
-        : "Login failed. Check the WordPress username and application password.";
+    const rawMessage = error instanceof Error ? error.message : "";
+    const message = rawMessage.includes("404")
+      ? "WordPress CRM bridge auth endpoint was not found. Check WORDPRESS_BASE_URL and confirm the bridge plugin is active."
+      : rawMessage.includes("401") || rawMessage.includes("403")
+        ? "WordPress rejected the username or application password."
+        : rawMessage.includes("WORDPRESS_BASE_URL")
+          ? "WORDPRESS_BASE_URL is not configured correctly."
+          : rawMessage.includes("fetch failed")
+            ? "The CRM could not reach WordPress. Check the production WordPress URL and network access."
+            : rawMessage.includes("WordPress bridge request failed")
+              ? "WordPress login failed. Check the bridge plugin, app password, and production WordPress URL."
+              : "Login failed. Check the WordPress username and application password.";
 
     return redirectToLoginWithError(message);
   }

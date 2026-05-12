@@ -1,8 +1,10 @@
 import { AppShell } from "@/app/components/app-shell";
 import { PeopleSearch } from "@/app/components/people-search";
+import { RuntimeIssuePanel } from "@/app/components/runtime-issue-panel";
 import { requireSession } from "@/lib/auth";
 import { isPeopleSortKey, LANE_META, type LaneKey, type PeopleSortKey } from "@/lib/constants";
 import { getPeople } from "@/lib/crm";
+import { getRuntimeIssue } from "@/lib/runtime-issues";
 
 export default async function PeoplePage({
   searchParams
@@ -15,19 +17,29 @@ export default async function PeoplePage({
   const initialLane = lane && lane in LANE_META ? (lane as LaneKey) : "";
   const requestedSort = sort?.trim() ?? "";
   const initialSort: PeopleSortKey = isPeopleSortKey(requestedSort) ? requestedSort : "LAST_INTERACTION";
-  const contacts = await getPeople(initialQuery.length >= 3 ? initialQuery : "", {
-    laneKey: initialLane || null,
-    sortBy: initialSort
-  });
+  try {
+    const contacts = await getPeople(initialQuery.length >= 3 ? initialQuery : "", {
+      laneKey: initialLane || null,
+      sortBy: initialSort
+    });
 
-  return (
-    <AppShell currentPath="/people" session={session}>
-      <PeopleSearch
-        initialContacts={contacts}
-        initialLane={initialLane}
-        initialQuery={initialQuery}
-        initialSort={initialSort}
-      />
-    </AppShell>
-  );
+    return (
+      <AppShell currentPath="/people" session={session}>
+        <PeopleSearch
+          initialContacts={contacts}
+          initialLane={initialLane}
+          initialQuery={initialQuery}
+          initialSort={initialSort}
+        />
+      </AppShell>
+    );
+  } catch (error) {
+    console.error("People page load failed", error);
+
+    return (
+      <AppShell currentPath="/people" session={session}>
+        <RuntimeIssuePanel issue={getRuntimeIssue(error, "People page")} />
+      </AppShell>
+    );
+  }
 }
