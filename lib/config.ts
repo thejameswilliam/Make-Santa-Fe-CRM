@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+function normalizeExternalBaseUrl(value?: string | null) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) {
+    return "";
+  }
+
+  const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return withProtocol.replace(/\/+$/, "");
+}
+
 const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
   WORDPRESS_BASE_URL: z.string().optional(),
@@ -22,10 +32,10 @@ const parsed = envSchema.parse({
 
 export const config = {
   databaseUrl: parsed.DATABASE_URL ?? "",
-  wordpressBaseUrl: parsed.WORDPRESS_BASE_URL ?? "",
+  wordpressBaseUrl: normalizeExternalBaseUrl(parsed.WORDPRESS_BASE_URL),
   wordpressBridgeToken: parsed.WORDPRESS_CRM_BRIDGE_TOKEN ?? "",
   sessionSecret: parsed.CRM_SESSION_SECRET ?? "development-session-secret",
-  appBaseUrl: parsed.CRM_APP_BASE_URL?.replace(/\/+$/, "") ?? "",
+  appBaseUrl: normalizeExternalBaseUrl(parsed.CRM_APP_BASE_URL),
   syncFreshnessSeconds: parsed.CRM_SYNC_FRESHNESS_SECONDS,
   syncFreshnessMs: parsed.CRM_SYNC_FRESHNESS_SECONDS * 1000,
   hasDatabase: Boolean(parsed.DATABASE_URL),

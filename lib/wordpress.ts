@@ -14,7 +14,13 @@ function buildWordPressUrl(path: string) {
     throw new Error("WORDPRESS_BASE_URL is not configured.");
   }
 
-  return new URL(path.replace(/^\//, ""), `${config.wordpressBaseUrl.replace(/\/$/, "")}/`).toString();
+  try {
+    return new URL(path.replace(/^\//, ""), `${config.wordpressBaseUrl.replace(/\/$/, "")}/`).toString();
+  } catch {
+    throw new Error(
+      "WORDPRESS_BASE_URL is invalid. Use a full site URL like https://www.makesantafe.org"
+    );
+  }
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {

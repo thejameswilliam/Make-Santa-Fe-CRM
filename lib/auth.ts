@@ -124,7 +124,13 @@ export function getRequestAppOrigin(request: NextRequest) {
 export function buildRequestAppUrl(request: NextRequest, target: string) {
   const origin = getRequestAppOrigin(request);
   const pathname = normalizeRedirectTarget(target);
-  return new URL(pathname, `${origin}/`);
+  try {
+    return new URL(pathname, `${origin}/`);
+  } catch {
+    throw new Error(
+      "CRM_APP_BASE_URL is invalid. Use a full public URL like https://crm.makesantafe.org"
+    );
+  }
 }
 
 export function redirectFromRequest(request: NextRequest, target: string) {
