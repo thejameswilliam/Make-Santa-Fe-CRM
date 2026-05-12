@@ -6,7 +6,7 @@ alerts:
   - rule: DOMAIN_FAILED
 
 databases:
-  - name: crm-db
+  - name: make-crm-database
     engine: PG
     version: "16"
     production: true
@@ -70,7 +70,7 @@ envs:
     scope: RUN_TIME
     type: GENERAL
   - key: DATABASE_URL
-    value: ${crm-db.DATABASE_PRIVATE_URL}
+    value: ${make-crm-database.DATABASE_URL}
     scope: RUN_AND_BUILD_TIME
     type: GENERAL
 
