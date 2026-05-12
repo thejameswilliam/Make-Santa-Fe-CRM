@@ -73,6 +73,10 @@ envs:
     value: ${make-crm-database.DATABASE_URL}
     scope: RUN_AND_BUILD_TIME
     type: GENERAL
+  - key: DATABASE_CA_CERT
+    value: ${make-crm-database.CA_CERT}
+    scope: RUN_TIME
+    type: GENERAL
 
 # Add these encrypted app-level environment variables in DigitalOcean before the first production deploy:
 # CRM_SESSION_SECRET=<long-random-secret>

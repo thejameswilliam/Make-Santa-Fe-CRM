@@ -12,6 +12,7 @@ function normalizeExternalBaseUrl(value?: string | null) {
 
 const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
+  DATABASE_CA_CERT: z.string().optional(),
   WORDPRESS_BASE_URL: z.string().optional(),
   WORDPRESS_CRM_BRIDGE_TOKEN: z.string().optional(),
   CRM_SESSION_SECRET: z.string().optional(),
@@ -22,6 +23,7 @@ const envSchema = z.object({
 
 const parsed = envSchema.parse({
   DATABASE_URL: process.env.DATABASE_URL,
+  DATABASE_CA_CERT: process.env.DATABASE_CA_CERT,
   WORDPRESS_BASE_URL: process.env.WORDPRESS_BASE_URL,
   WORDPRESS_CRM_BRIDGE_TOKEN: process.env.WORDPRESS_CRM_BRIDGE_TOKEN,
   CRM_SESSION_SECRET: process.env.CRM_SESSION_SECRET,
@@ -32,6 +34,7 @@ const parsed = envSchema.parse({
 
 export const config = {
   databaseUrl: parsed.DATABASE_URL ?? "",
+  databaseCaCert: parsed.DATABASE_CA_CERT?.trim() ?? "",
   wordpressBaseUrl: normalizeExternalBaseUrl(parsed.WORDPRESS_BASE_URL),
   wordpressBridgeToken: parsed.WORDPRESS_CRM_BRIDGE_TOKEN ?? "",
   sessionSecret: parsed.CRM_SESSION_SECRET ?? "development-session-secret",
