@@ -20,7 +20,10 @@ import { config } from "@/lib/config";
 import { LANE_META, SOURCE_LABELS, SOURCE_SYSTEMS, type LaneKey, type SourceSystemKey } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { classifyWordPressEvent } from "@/lib/sync/classify";
-import { getAutoCreateContactDisplayName } from "@/lib/sync/contact-resolution";
+import {
+  getAutoCreateContactDisplayName,
+  requiresExistingContactForImport
+} from "@/lib/sync/contact-resolution";
 import type {
   SyncActivityState,
   SyncModeKey,
@@ -85,7 +88,11 @@ function assertDatabase() {
 }
 
 const ACTIVE_SYNC_SOURCES = SOURCE_SYSTEMS.filter((source) => source !== "MANUAL");
-const SYNC_PAGE_SIZE = 250;
+const SYNC_PAGE_SIZE = config.wordpressSyncPageSize;
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 interface SyncSourceProgressSnapshot {
   source: SourceSystemKey;
@@ -595,7 +602,7 @@ export async function syncSource(
 
           if (result === "IMPORTED") {
             importedCount += 1;
-          } else {
+          } else if (result === "UNMATCHED") {
             unmatchedCount += 1;
           }
         } catch (error) {
@@ -625,6 +632,10 @@ export async function syncSource(
         if (feed.nextCursor === null) {
           hasMore = false;
         }
+      }
+
+      if (hasMore && mode === "BACKFILL" && config.wordpressSyncRequestDelayMs > 0) {
+        await delay(config.wordpressSyncRequestDelayMs);
       }
     }
 
@@ -702,6 +713,10 @@ async function ingestSourceEvent(input: {
   const normalized = normalizeEmail(input.event.email);
 
   if (!normalized) {
+    if (requiresExistingContactForImport(input.source)) {
+      return "SKIPPED" as const;
+    }
+
     await upsertUnmatchedEvent({
       source: input.source,
       sourceEventId: input.event.externalId,
@@ -729,6 +744,11 @@ async function ingestSourceEvent(input: {
   }
 
   if (!contactId) {
+    if (requiresExistingContactForImport(input.source)) {
+      input.contactResolutionCache?.set(normalized, null);
+      return "SKIPPED" as const;
+    }
+
     const displayName = getAutoCreateContactDisplayName(input.event);
 
     if (displayName) {

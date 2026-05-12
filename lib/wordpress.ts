@@ -9,6 +9,8 @@ import type {
   WordPressMetadataFeed
 } from "@/lib/types";
 
+const RETRYABLE_WORDPRESS_STATUS_CODES = new Set([429, 502, 503, 504]);
+
 function buildWordPressUrl(path: string) {
   if (!config.wordpressBaseUrl) {
     throw new Error("WORDPRESS_BASE_URL is not configured.");
@@ -40,6 +42,84 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function parseRetryAfterMilliseconds(response: Response) {
+  const retryAfter = response.headers.get("retry-after")?.trim();
+  if (!retryAfter) {
+    return null;
+  }
+
+  const asSeconds = Number(retryAfter);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return asSeconds * 1000;
+  }
+
+  const asDate = Date.parse(retryAfter);
+  if (!Number.isNaN(asDate)) {
+    return Math.max(0, asDate - Date.now());
+  }
+
+  return null;
+}
+
+function isRetryableWordPressStatus(status: number) {
+  return RETRYABLE_WORDPRESS_STATUS_CODES.has(status);
+}
+
+function isTransientWordPressFetchError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    message.includes("timed out") ||
+    message.includes("timeout") ||
+    message.includes("econnreset") ||
+    message.includes("econnrefused") ||
+    message.includes("socket hang up")
+  );
+}
+
+async function requestWordPressJsonWithRetry<T>(path: string, init: RequestInit, options?: {
+  retries?: number;
+  retryDelayMs?: number;
+}) {
+  const retries = options?.retries ?? 0;
+  const retryDelayMs = options?.retryDelayMs ?? 0;
+  let attempt = 0;
+
+  while (true) {
+    try {
+      const response = await fetch(buildWordPressUrl(path), {
+        ...init,
+        cache: "no-store"
+      });
+
+      if (!response.ok && isRetryableWordPressStatus(response.status) && attempt < retries) {
+        const retryAfterMs = parseRetryAfterMilliseconds(response);
+        await response.text().catch(() => "");
+        await sleep(retryAfterMs ?? retryDelayMs * Math.max(1, attempt + 1));
+        attempt += 1;
+        continue;
+      }
+
+      return await parseJsonResponse<T>(response);
+    } catch (error) {
+      if (attempt >= retries || !isTransientWordPressFetchError(error)) {
+        throw error;
+      }
+
+      await sleep(retryDelayMs * Math.max(1, attempt + 1));
+      attempt += 1;
+    }
+  }
 }
 
 export async function exchangeWordPressCredentials(username: string, applicationPassword: string) {
@@ -88,23 +168,31 @@ export async function fetchSourceEvents(source: SourceSystemKey, options: {
     params.set("cursor", options.cursor);
   }
 
-  const response = await fetch(buildWordPressUrl(`/wp-json/make-santa-fe-crm/v1/sync/${source.toLowerCase()}?${params.toString()}`), {
-    headers: {
-      "X-MSFCrm-Token": config.wordpressBridgeToken
+  return requestWordPressJsonWithRetry<WordPressEventFeed>(
+    `/wp-json/make-santa-fe-crm/v1/sync/${source.toLowerCase()}?${params.toString()}`,
+    {
+      headers: {
+        "X-MSFCrm-Token": config.wordpressBridgeToken
+      }
     },
-    cache: "no-store"
-  });
-
-  return parseJsonResponse<WordPressEventFeed>(response);
+    {
+      retries: config.wordpressSyncRetryCount,
+      retryDelayMs: config.wordpressSyncRetryDelayMs
+    }
+  );
 }
 
 export async function fetchSourceMetadata(source: SourceSystemKey) {
-  const response = await fetch(buildWordPressUrl(`/wp-json/make-santa-fe-crm/v1/metadata/${source.toLowerCase()}`), {
-    headers: {
-      "X-MSFCrm-Token": config.wordpressBridgeToken
+  return requestWordPressJsonWithRetry<WordPressMetadataFeed>(
+    `/wp-json/make-santa-fe-crm/v1/metadata/${source.toLowerCase()}`,
+    {
+      headers: {
+        "X-MSFCrm-Token": config.wordpressBridgeToken
+      }
     },
-    cache: "no-store"
-  });
-
-  return parseJsonResponse<WordPressMetadataFeed>(response);
+    {
+      retries: config.wordpressSyncRetryCount,
+      retryDelayMs: config.wordpressSyncRetryDelayMs
+    }
+  );
 }

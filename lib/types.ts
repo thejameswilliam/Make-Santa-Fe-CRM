@@ -1,4 +1,10 @@
-import type { LaneKey, ReviewEventTypeKey, SourceSystemKey } from "@/lib/constants";
+import type {
+  ContactEffectiveRoleTagKey,
+  ContactManualRoleTagKey,
+  LaneKey,
+  ReviewEventTypeKey,
+  SourceSystemKey
+} from "@/lib/constants";
 
 export type ProfileFieldKey = "FULL_NAME" | "PHONE" | "ADDRESS";
 export type ReviewStatusKey = "PENDING" | "ASSIGNED" | "IGNORED";
@@ -50,6 +56,12 @@ export interface SyncStatusCard {
 export interface DashboardData {
   metrics: DashboardMetric[];
   favoriteContacts: ContactListItem[];
+  selectedRoleTag: ContactEffectiveRoleTagKey | "ALL";
+  availableRoleTags: Array<{
+    key: ContactEffectiveRoleTagKey;
+    label: string;
+  }>;
+  taggedContacts: ContactListItem[];
   syncStatus: SyncStatusCard[];
   needsBackgroundRefresh: boolean;
 }
@@ -61,6 +73,7 @@ export interface ContactListItem {
   photoUrl: string | null;
   isActive: boolean;
   isFavorite: boolean;
+  effectiveRoleTags: ContactEffectiveRoleTagKey[];
   recentLaneKeys: LaneKey[];
   lastInteractionAt: string | null;
 }
@@ -106,6 +119,8 @@ export interface ContactDetail {
   primaryEmail: string | null;
   isActive: boolean;
   isFavorite: boolean;
+  manualRoleTags: ContactManualRoleTagKey[];
+  effectiveRoleTags: ContactEffectiveRoleTagKey[];
   emails: string[];
   profileFields: ContactProfileField[];
   notes: ContactNote[];

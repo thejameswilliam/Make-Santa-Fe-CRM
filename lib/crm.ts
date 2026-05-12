@@ -1,4 +1,5 @@
 import {
+  ContactManualRoleTag as PrismaContactManualRoleTag,
   LaneKey as PrismaLaneKey,
   Prisma,
   ProfileFieldKey as PrismaProfileFieldKey,
@@ -7,11 +8,17 @@ import {
 } from "@prisma/client";
 
 import { ensureCatalogSeeded } from "@/lib/catalog";
+import { buildEffectiveRoleTags } from "@/lib/contact-roles";
 import { config } from "@/lib/config";
 import {
+  CONTACT_EFFECTIVE_ROLE_TAGS,
+  CONTACT_MANUAL_ROLE_TAGS,
+  CONTACT_ROLE_TAG_META,
   DEFAULT_MAPPING_RULES,
   findReviewEventType,
   findReviewEventTypeByKey,
+  type ContactEffectiveRoleTagKey,
+  type ContactManualRoleTagKey,
   LANE_META,
   type PeopleSortKey,
   SOURCE_LABELS,
@@ -456,6 +463,7 @@ function mapContactListItem(contact: {
   id: string;
   displayName: string | null;
   isFavorite: boolean;
+  manualRoleTags: PrismaContactManualRoleTag[];
   primaryEmailId: string | null;
   emails: Array<{
     id: string;
@@ -473,6 +481,7 @@ function mapContactListItem(contact: {
   }>;
 }, options?: {
   isActive?: boolean;
+  hasDonorRole?: boolean;
 }): ContactListItem {
   const primaryEmail =
     contact.emails.find((email) => email.id === contact.primaryEmailId) ??
@@ -501,6 +510,10 @@ function mapContactListItem(contact: {
     photoUrl,
     isActive: options?.isActive ?? hasRecentNonEmailInteraction(combinedInteractions),
     isFavorite: contact.isFavorite,
+    effectiveRoleTags: buildEffectiveRoleTags({
+      manualRoleTags: contact.manualRoleTags as ContactManualRoleTagKey[],
+      hasDonorHistory: options?.hasDonorRole ?? false
+    }),
     recentLaneKeys: Array.from(new Set(combinedInteractions.map((event) => event.laneKey))),
     lastInteractionAt: combinedInteractions[0]?.occurredAt.toISOString() ?? null
   };
@@ -547,6 +560,56 @@ async function getActiveContactIds(db: ReturnType<typeof assertDatabase> | Prism
         contactId: { in: contactIds },
         laneKey: { not: PrismaLaneKey.EMAIL },
         occurredAt: { gte: activeSince }
+      },
+      select: {
+        contactId: true
+      },
+      distinct: ["contactId"]
+    })
+  ]);
+
+  return new Set<string>([
+    ...timelineMatches.map((entry) => entry.contactId),
+    ...manualMatches.map((entry) => entry.contactId)
+  ]);
+}
+
+async function getDonorContactIds(
+  db: ReturnType<typeof assertDatabase> | Prisma.TransactionClient,
+  contactIds?: string[]
+) {
+  if (contactIds && contactIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const withContactFilter =
+    contactIds && contactIds.length > 0
+      ? {
+          contactId: {
+            in: contactIds
+          }
+        }
+      : {};
+
+  const [timelineMatches, manualMatches] = await Promise.all([
+    db.timelineEvent.findMany({
+      where: {
+        eventKind: "donation",
+        ...withContactFilter
+      },
+      select: {
+        contactId: true
+      },
+      distinct: ["contactId"]
+    }),
+    db.manualInteraction.findMany({
+      where: {
+        ...withContactFilter,
+        interactionType: {
+          is: {
+            slug: "donation"
+          }
+        }
       },
       select: {
         contactId: true
@@ -675,6 +738,53 @@ function sortContactListItems(
 
     return compareStringsAsc(left.displayName, right.displayName);
   });
+}
+
+function getAvailableRoleTags() {
+  return CONTACT_EFFECTIVE_ROLE_TAGS.map((key) => ({
+    key,
+    label: CONTACT_ROLE_TAG_META[key].label
+  }));
+}
+
+async function getContactIdsForEffectiveRoleTag(
+  db: ReturnType<typeof assertDatabase>,
+  roleTag: ContactEffectiveRoleTagKey
+) {
+  if (roleTag === "DONOR") {
+    const donorIds = await getDonorContactIds(db);
+    if (donorIds.size === 0) {
+      return [];
+    }
+
+    const contacts = await db.contact.findMany({
+      where: {
+        mergedIntoId: null,
+        id: {
+          in: Array.from(donorIds)
+        }
+      },
+      select: {
+        id: true
+      }
+    });
+
+    return contacts.map((contact) => contact.id);
+  }
+
+  const contacts = await db.contact.findMany({
+    where: {
+      mergedIntoId: null,
+      manualRoleTags: {
+        has: roleTag as PrismaContactManualRoleTag
+      }
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return contacts.map((contact) => contact.id);
 }
 
 function buildContactNoteContent(input: {
@@ -1198,17 +1308,30 @@ function buildContactMetricSections(input: {
   ];
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
+export async function getDashboardData(
+  selectedRoleTag: ContactEffectiveRoleTagKey | "ALL" = "ALL"
+): Promise<DashboardData> {
   if (!prisma) {
-    return demoDashboardData;
+    if (selectedRoleTag === "ALL") {
+      return demoDashboardData;
+    }
+
+    return {
+      ...demoDashboardData,
+      selectedRoleTag,
+      taggedContacts: demoContacts.filter((contact) => contact.effectiveRoleTags.includes(selectedRoleTag)),
+      availableRoleTags: getAvailableRoleTags()
+    };
   }
 
   await ensureCatalogSeeded();
 
   const db = assertDatabase();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const selectedContactIds =
+    selectedRoleTag === "ALL" ? null : await getContactIdsForEffectiveRoleTag(db, selectedRoleTag);
 
-  const [favoriteContacts, recentMetricEvents, syncStates] = await Promise.all([
+  const [favoriteContacts, syncStates] = await Promise.all([
     db.contact.findMany({
       where: {
         mergedIntoId: null,
@@ -1237,17 +1360,28 @@ export async function getDashboardData(): Promise<DashboardData> {
       orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
       take: 8
     }),
-    db.timelineEvent.findMany({
-      where: {
-        occurredAt: {
-          gte: thirtyDaysAgo
-        }
-      }
-    }),
     db.sourceSyncState.findMany({
       orderBy: { source: "asc" }
     })
   ]);
+
+  const recentMetricEvents =
+    selectedContactIds !== null && selectedContactIds.length === 0
+      ? []
+      : await db.timelineEvent.findMany({
+          where: {
+            occurredAt: {
+              gte: thirtyDaysAgo
+            },
+            ...(selectedContactIds !== null
+              ? {
+                  contactId: {
+                    in: selectedContactIds
+                  }
+                }
+              : {})
+          }
+        });
 
   const donationEvents = recentMetricEvents.filter((event) => event.laneKey === PrismaLaneKey.DONOR);
   const membershipEvents = recentMetricEvents.filter((event) => event.laneKey === PrismaLaneKey.MEMBER);
@@ -1302,18 +1436,74 @@ export async function getDashboardData(): Promise<DashboardData> {
     lastSuccessfulSyncAt: state.lastSuccessfulSyncAt?.toISOString() ?? null,
     stale: isStale(state.lastSuccessfulSyncAt)
   }));
+  const favoriteContactIds = favoriteContacts.map((contact) => contact.id);
   const activeFavoriteContactIds = await getActiveContactIds(
     db,
-    favoriteContacts.map((contact) => contact.id)
+    favoriteContactIds
   );
+  const favoriteDonorContactIds = await getDonorContactIds(db, favoriteContactIds);
+
+  let taggedContacts: ContactListItem[] = [];
+  if (selectedRoleTag !== "ALL" && selectedContactIds && selectedContactIds.length > 0) {
+    const taggedContactRecords = await db.contact.findMany({
+      where: {
+        mergedIntoId: null,
+        id: {
+          in: selectedContactIds
+        }
+      },
+      include: {
+        emails: true,
+        timelineEvents: {
+          orderBy: { occurredAt: "desc" },
+          take: 6,
+          select: {
+            laneKey: true,
+            occurredAt: true,
+            rawPayload: true
+          }
+        },
+        manualInteractions: {
+          orderBy: { occurredAt: "desc" },
+          take: 6,
+          select: {
+            laneKey: true,
+            occurredAt: true
+          }
+        }
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }]
+    });
+
+    const taggedContactIds = taggedContactRecords.map((contact) => contact.id);
+    const activeTaggedContactIds = await getActiveContactIds(db, taggedContactIds);
+    const donorTaggedContactIds =
+      selectedRoleTag === "DONOR"
+        ? new Set<string>(selectedContactIds)
+        : await getDonorContactIds(db, taggedContactIds);
+
+    taggedContacts = sortContactListItems(
+      taggedContactRecords.map((contact) =>
+        mapContactListItem(contact, {
+          isActive: activeTaggedContactIds.has(contact.id),
+          hasDonorRole: donorTaggedContactIds.has(contact.id)
+        })
+      ),
+      "LAST_INTERACTION"
+    ).slice(0, 8);
+  }
 
   return {
     metrics,
     favoriteContacts: favoriteContacts.map((contact) =>
       mapContactListItem(contact, {
-        isActive: activeFavoriteContactIds.has(contact.id)
+        isActive: activeFavoriteContactIds.has(contact.id),
+        hasDonorRole: favoriteDonorContactIds.has(contact.id)
       })
     ),
+    selectedRoleTag,
+    availableRoleTags: getAvailableRoleTags(),
+    taggedContacts,
     syncStatus,
     needsBackgroundRefresh: syncStatus.some((entry) => entry.stale)
   };
@@ -1454,10 +1644,14 @@ export async function getPeople(
   const volunteerMinutesByContactId = new Map<string, number>();
   const spaceUseCountByContactId = new Map<string, number>();
   const contactIds = uniqueContacts.map((contact) => contact.id);
-  const activeContactIds = await getActiveContactIds(db, contactIds);
+  const [activeContactIds, donorContactIds] = await Promise.all([
+    getActiveContactIds(db, contactIds),
+    getDonorContactIds(db, contactIds)
+  ]);
   const mappedContacts = uniqueContacts.map((contact) =>
     mapContactListItem(contact, {
-      isActive: activeContactIds.has(contact.id)
+      isActive: activeContactIds.has(contact.id),
+      hasDonorRole: donorContactIds.has(contact.id)
     })
   );
 
@@ -1677,6 +1871,10 @@ export async function getContactDetail(contactId: string): Promise<ContactDetail
       })
     }));
 
+  const hasDonorHistory =
+    contact.timelineEvents.some((event) => event.eventKind === "donation") ||
+    contact.manualInteractions.some((interaction) => interaction.interactionType.slug === "donation");
+
   return {
     id: contact.id,
     displayName: contact.displayName ?? primaryEmail?.email ?? "Unnamed contact",
@@ -1695,6 +1893,11 @@ export async function getContactDetail(contactId: string): Promise<ContactDetail
       new Date()
     ),
     isFavorite: contact.isFavorite,
+    manualRoleTags: contact.manualRoleTags as ContactManualRoleTagKey[],
+    effectiveRoleTags: buildEffectiveRoleTags({
+      manualRoleTags: contact.manualRoleTags as ContactManualRoleTagKey[],
+      hasDonorHistory
+    }),
     emails: contact.emails.map((email) => email.email),
     profileFields: buildCanonicalProfileFields(
       contact.profileValues.map((value) => ({
@@ -1762,6 +1965,57 @@ export async function setContactFavorite(input: {
   });
 
   return updated;
+}
+
+export async function setContactManualRoleTag(input: {
+  contactId: string;
+  roleTag: ContactManualRoleTagKey;
+  enabled: boolean;
+}) {
+  if (!CONTACT_MANUAL_ROLE_TAGS.includes(input.roleTag)) {
+    throw new Error("Role tag not found.");
+  }
+
+  const db = assertDatabase();
+  const contact = await db.contact.findUnique({
+    where: { id: input.contactId },
+    select: {
+      id: true,
+      mergedIntoId: true,
+      manualRoleTags: true
+    }
+  });
+
+  if (!contact || contact.mergedIntoId) {
+    throw new Error("Contact not found.");
+  }
+
+  const nextTags = new Set<ContactManualRoleTagKey>(contact.manualRoleTags as ContactManualRoleTagKey[]);
+  if (input.enabled) {
+    nextTags.add(input.roleTag);
+  } else {
+    nextTags.delete(input.roleTag);
+  }
+
+  const updated = await db.contact.update({
+    where: { id: input.contactId },
+    data: {
+      manualRoleTags: Array.from(nextTags) as PrismaContactManualRoleTag[]
+    },
+    select: {
+      manualRoleTags: true
+    }
+  });
+
+  const donorContactIds = await getDonorContactIds(db, [input.contactId]);
+
+  return {
+    manualRoleTags: updated.manualRoleTags as ContactManualRoleTagKey[],
+    effectiveRoleTags: buildEffectiveRoleTags({
+      manualRoleTags: updated.manualRoleTags as ContactManualRoleTagKey[],
+      hasDonorHistory: donorContactIds.has(input.contactId)
+    })
+  };
 }
 
 export async function getReviewQueueItems(): Promise<ReviewQueueItem[]> {

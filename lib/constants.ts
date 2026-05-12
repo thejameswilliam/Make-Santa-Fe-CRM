@@ -41,6 +41,45 @@ export const LANE_META = {
 
 export type LaneKey = keyof typeof LANE_META;
 
+export const CONTACT_MANUAL_ROLE_TAGS = [
+  "BOARD_MEMBER",
+  "INSTRUCTOR",
+  "VOLUNTEER",
+  "STAFF"
+] as const;
+
+export const CONTACT_EFFECTIVE_ROLE_TAGS = [
+  ...CONTACT_MANUAL_ROLE_TAGS,
+  "DONOR"
+] as const;
+
+export type ContactManualRoleTagKey = (typeof CONTACT_MANUAL_ROLE_TAGS)[number];
+export type ContactEffectiveRoleTagKey = (typeof CONTACT_EFFECTIVE_ROLE_TAGS)[number];
+
+export const CONTACT_ROLE_TAG_META: Record<
+  ContactEffectiveRoleTagKey,
+  {
+    label: string;
+    color: string;
+    textColor: string;
+    manual: boolean;
+  }
+> = {
+  BOARD_MEMBER: { label: "Board member", color: "#ffd166", textColor: "#1a1200", manual: true },
+  INSTRUCTOR: { label: "Instructor", color: "#7ad7ff", textColor: "#04141a", manual: true },
+  VOLUNTEER: { label: "Volunteer", color: "#c94d3f", textColor: "#fff2ec", manual: true },
+  STAFF: { label: "Staff", color: "#8ef0b0", textColor: "#06140b", manual: true },
+  DONOR: { label: "Donor", color: "#ff7a59", textColor: "#170807", manual: false }
+};
+
+export function isContactManualRoleTagKey(value?: string | null): value is ContactManualRoleTagKey {
+  return CONTACT_MANUAL_ROLE_TAGS.includes(value as ContactManualRoleTagKey);
+}
+
+export function isContactEffectiveRoleTagKey(value?: string | null): value is ContactEffectiveRoleTagKey {
+  return CONTACT_EFFECTIVE_ROLE_TAGS.includes(value as ContactEffectiveRoleTagKey);
+}
+
 export const PEOPLE_SORT_OPTIONS = [
   { key: "LAST_INTERACTION", label: "Interaction date" },
   { key: "LAST_NAME", label: "Last name" },

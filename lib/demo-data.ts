@@ -137,6 +137,7 @@ export const demoDashboardData: DashboardData = {
       photoUrl: "https://placehold.co/96x96/181b22/f5f7fb?text=EM",
       isActive: true,
       isFavorite: true,
+      effectiveRoleTags: ["BOARD_MEMBER", "DONOR"],
       recentLaneKeys: ["EMAIL", "MEMBER", "DONOR"],
       lastInteractionAt: timeline[0]?.occurredAt ?? null
     },
@@ -147,10 +148,20 @@ export const demoDashboardData: DashboardData = {
       photoUrl: null,
       isActive: false,
       isFavorite: true,
+      effectiveRoleTags: ["VOLUNTEER"],
       recentLaneKeys: ["EMAIL"],
       lastInteractionAt: "2026-05-06T22:20:00.000Z"
     }
   ],
+  selectedRoleTag: "ALL",
+  availableRoleTags: [
+    { key: "BOARD_MEMBER", label: "Board member" },
+    { key: "INSTRUCTOR", label: "Instructor" },
+    { key: "VOLUNTEER", label: "Volunteer" },
+    { key: "STAFF", label: "Staff" },
+    { key: "DONOR", label: "Donor" }
+  ],
+  taggedContacts: [],
   syncStatus: Object.entries(SOURCE_LABELS).map(([source, label], index) => ({
     source: source as keyof typeof SOURCE_LABELS,
     label,
@@ -168,6 +179,7 @@ export const demoContacts: ContactListItem[] = [
     photoUrl: "https://placehold.co/96x96/181b22/f5f7fb?text=EM",
     isActive: true,
     isFavorite: true,
+    effectiveRoleTags: ["BOARD_MEMBER", "DONOR"],
     recentLaneKeys: ["EMAIL", "MEMBER", "DONOR"],
     lastInteractionAt: timeline[0]?.occurredAt ?? null
   },
@@ -178,6 +190,7 @@ export const demoContacts: ContactListItem[] = [
     photoUrl: null,
     isActive: false,
     isFavorite: true,
+    effectiveRoleTags: ["VOLUNTEER"],
     recentLaneKeys: ["EMAIL"],
     lastInteractionAt: "2026-05-06T22:20:00.000Z"
   }
@@ -189,6 +202,8 @@ export const demoContactDetail: ContactDetail = {
   primaryEmail: "elena@example.org",
   isActive: true,
   isFavorite: true,
+  manualRoleTags: ["BOARD_MEMBER"],
+  effectiveRoleTags: ["BOARD_MEMBER", "DONOR"],
   emails: ["elena@example.org", "elena.msf@gmail.com"],
   profileFields: [
     {

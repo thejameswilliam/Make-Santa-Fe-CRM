@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/app/components/app-shell";
 import { BackgroundRefresh } from "@/app/components/background-refresh";
 import { ContactNotes } from "@/app/components/contact-notes";
+import { ContactRoleTagsEditor } from "@/app/components/contact-role-tags-editor";
 import { ContactSearchSelect } from "@/app/components/contact-search-select";
 import { FavoriteContactButton } from "@/app/components/favorite-contact-button";
 import { ManualInteractionForm } from "@/app/components/manual-interaction-form";
@@ -62,6 +63,12 @@ export default async function ContactPage({
             enabled={detail.needsBackgroundRefresh}
             message="Loaded the cached person record."
             source={undefined}
+          />
+
+          <ContactRoleTagsEditor
+            contactId={detail.id}
+            effectiveRoleTags={detail.effectiveRoleTags}
+            manualRoleTags={detail.manualRoleTags}
           />
 
           <div className="compact-profile-block">

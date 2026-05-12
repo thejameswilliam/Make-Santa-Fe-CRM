@@ -665,6 +665,69 @@ textarea::placeholder {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
+.dashboard-role-filter-panel {
+  gap: 12px;
+}
+
+.role-filter-row {
+  align-items: center;
+}
+
+.role-filter-pill,
+.role-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(239, 242, 247, 0.9);
+}
+
+.role-filter-pill {
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.role-filter-pill:hover,
+.role-filter-pill.is-active {
+  border-color: var(--role-tag-color, rgba(255, 77, 77, 0.46));
+  background: color-mix(in srgb, var(--role-tag-color, rgba(255, 77, 77, 0.14)) 16%, rgba(255, 255, 255, 0.03));
+  color: var(--role-tag-text, #fffafa);
+  box-shadow: var(--glow-soft);
+}
+
+.role-tag-editor {
+  gap: 10px;
+}
+
+.role-tag-editor-row {
+  align-items: center;
+}
+
+.role-tag-button {
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.role-tag-button:hover,
+.role-tag-button.is-active {
+  border-color: var(--role-tag-color, rgba(255, 77, 77, 0.46));
+  background: color-mix(in srgb, var(--role-tag-color, rgba(255, 77, 77, 0.14)) 16%, rgba(255, 255, 255, 0.03));
+  color: var(--role-tag-text, #fffafa);
+  box-shadow: var(--glow-soft);
+}
+
+.role-tag-button:disabled {
+  opacity: 0.55;
+}
+
+.role-tag-pill-readonly {
+  opacity: 0.94;
+}
+
 .status-card {
   display: grid;
   gap: 8px;
@@ -1227,6 +1290,10 @@ textarea::placeholder {
 }
 
 .contact-card-lanes {
+  min-height: 28px;
+}
+
+.contact-card-role-tags {
   min-height: 28px;
 }
 

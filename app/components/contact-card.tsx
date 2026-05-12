@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { FavoriteContactButton } from "@/app/components/favorite-contact-button";
-import { LANE_META } from "@/lib/constants";
+import { CONTACT_ROLE_TAG_META, LANE_META } from "@/lib/constants";
 import type { ContactListItem } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
 
@@ -63,6 +63,27 @@ export function ContactCard({
             </span>
           </div>
         </div>
+
+        {contact.effectiveRoleTags.length > 0 ? (
+          <div className="contact-card-section">
+            <span className="contact-card-section-label">Role tags</span>
+            <div className="pill-row contact-card-role-tags">
+              {contact.effectiveRoleTags.map((roleTag) => (
+                <span
+                  className="role-tag-pill"
+                  key={`${contact.id}-${roleTag}`}
+                  style={{
+                    background: CONTACT_ROLE_TAG_META[roleTag].color,
+                    color: CONTACT_ROLE_TAG_META[roleTag].textColor,
+                    borderColor: "transparent"
+                  }}
+                >
+                  {CONTACT_ROLE_TAG_META[roleTag].label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="contact-card-section">
           <span className="contact-card-section-label">Interaction types</span>

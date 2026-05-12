@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { canAutoCreateContactFromEvent, getAutoCreateContactDisplayName } from "@/lib/sync/contact-resolution";
+import {
+  canAutoCreateContactFromEvent,
+  getAutoCreateContactDisplayName,
+  requiresExistingContactForImport
+} from "@/lib/sync/contact-resolution";
 import type { WordPressSourceEvent } from "@/lib/types";
 
 const baseEvent: WordPressSourceEvent = {
@@ -63,5 +67,15 @@ describe("canAutoCreateContactFromEvent", () => {
         email: "elena@example.org"
       })
     ).toBe(false);
+  });
+});
+
+describe("requiresExistingContactForImport", () => {
+  it("requires an existing contact for newsletter events", () => {
+    expect(requiresExistingContactForImport("NEWSLETTER")).toBe(true);
+  });
+
+  it("does not require an existing contact for non-newsletter sources", () => {
+    expect(requiresExistingContactForImport("WOOCOMMERCE")).toBe(false);
   });
 });

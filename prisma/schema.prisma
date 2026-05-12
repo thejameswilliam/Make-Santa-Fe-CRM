@@ -54,10 +54,18 @@ enum ProfileFieldKey {
   ADDRESS
 }
 
+enum ContactManualRoleTag {
+  BOARD_MEMBER
+  INSTRUCTOR
+  VOLUNTEER
+  STAFF
+}
+
 model Contact {
   id                String                @id @default(cuid())
   displayName       String?
   isFavorite        Boolean               @default(false)
+  manualRoleTags    ContactManualRoleTag[] @default([])
   mergedIntoId      String?
   primaryEmailId    String?               @unique
   createdAt         DateTime              @default(now())
