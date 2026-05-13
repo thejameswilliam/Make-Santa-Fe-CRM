@@ -17,10 +17,11 @@ const prisma = new PrismaClient({
 });
 
 try {
+  const startedAt = Date.now();
   console.log("");
   console.log("Rebuilding contact list summaries");
   console.log(`Chunk size: ${chunkSize}`);
-  console.log(`Started: ${new Date().toISOString()}`);
+  console.log(`Started: ${new Date(startedAt).toISOString()}`);
   console.log("");
 
   const contacts = await prisma.contact.findMany({
@@ -41,11 +42,11 @@ try {
 
   for (let index = 0; index < contacts.length; index += chunkSize) {
     const chunk = contacts.slice(index, index + chunkSize);
-    console.log(
-      `[${timestamp()}] Refreshing contact summary chunk ${Math.floor(index / chunkSize) + 1} (${chunk.length} contacts)...`
+    const chunkNumber = Math.floor(index / chunkSize) + 1;
+    await runStep(
+      `Refreshing contact summary chunk ${chunkNumber} (${chunk.length} contacts)`,
+      () => refreshContactListSummaryChunk(prisma, chunk.map((contact) => contact.id))
     );
-
-    await refreshContactListSummaryChunk(prisma, chunk.map((contact) => contact.id));
 
     refreshedCount += chunk.length;
     console.log(
@@ -54,7 +55,7 @@ try {
   }
 
   console.log("");
-  console.log(`Completed at ${new Date().toISOString()}.`);
+  console.log(`Completed at ${new Date().toISOString()} after ${formatElapsed(Date.now() - startedAt)}.`);
 } finally {
   await prisma.$disconnect();
 }
@@ -273,13 +274,46 @@ function stripSslModeFromConnectionString(connectionString) {
 function readChunkSize(inputArgs) {
   const chunkArg = inputArgs.find((arg) => arg.startsWith("--chunk="));
   if (!chunkArg) {
-    return 250;
+    return 50;
   }
 
   const parsed = Number(chunkArg.slice("--chunk=".length));
-  return Number.isFinite(parsed) ? Math.max(25, Math.min(parsed, 1000)) : 250;
+  return Number.isFinite(parsed) ? Math.max(10, Math.min(parsed, 1000)) : 50;
 }
 
 function timestamp() {
   return new Date().toISOString();
+}
+
+async function runStep(label, work) {
+  const stepStartedAt = Date.now();
+  console.log(`[${timestamp()}] ${label}...`);
+
+  const heartbeat = setInterval(() => {
+    console.log(`[${timestamp()}] ${label} still running (${formatElapsed(Date.now() - stepStartedAt)})...`);
+  }, 5000);
+
+  if (typeof heartbeat.unref === "function") {
+    heartbeat.unref();
+  }
+
+  try {
+    const result = await work();
+    console.log(`[${timestamp()}] ${label} complete in ${formatElapsed(Date.now() - stepStartedAt)}.`);
+    return result;
+  } finally {
+    clearInterval(heartbeat);
+  }
+}
+
+function formatElapsed(milliseconds) {
+  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+
+  return `${seconds}s`;
 }
