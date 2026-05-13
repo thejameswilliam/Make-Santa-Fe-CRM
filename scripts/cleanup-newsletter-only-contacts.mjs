@@ -6,6 +6,7 @@ import { PrismaClient, Prisma } from "@prisma/client";
 const args = new Set(process.argv.slice(2));
 const applyChanges = args.has("--apply");
 const sampleCount = readSampleCount(process.argv.slice(2));
+const startedAt = Date.now();
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL is required.");
@@ -78,7 +79,29 @@ const candidateContactsCte = Prisma.sql`
 `;
 
 try {
-  const [summary] = await prisma.$queryRaw`
+  console.log("");
+  console.log("Newsletter-only contact cleanup");
+  console.log(`Mode: ${applyChanges ? "APPLY" : "DRY RUN"}`);
+  console.log(`Sample size: ${sampleCount}`);
+  console.log(`Started: ${new Date(startedAt).toISOString()}`);
+  console.log("");
+
+  const [candidateCountRow] = await runStep(
+    "Counting newsletter-only contact candidates",
+    () => prisma.$queryRaw`
+      ${candidateContactsCte}
+      SELECT COUNT(*)::int AS "contactCount"
+      FROM candidate_contacts
+    `
+  );
+
+  const candidateCount = candidateCountRow?.contactCount ?? 0;
+  console.log(`Found ${candidateCount} candidate contacts.`);
+  console.log("");
+
+  const [summary] = await runStep(
+    "Counting related rows for the candidate set",
+    () => prisma.$queryRaw`
     ${candidateContactsCte}
     SELECT
       (SELECT COUNT(*)::int FROM candidate_contacts) AS "contactCount",
@@ -86,9 +109,12 @@ try {
       (SELECT COUNT(*)::int FROM "ContactEmail" ce JOIN candidate_contacts cc ON cc.id = ce."contactId") AS "emailCount",
       (SELECT COUNT(*)::int FROM "ContactProfileValue" cpv JOIN candidate_contacts cc ON cc.id = cpv."contactId") AS "profileValueCount",
       (SELECT COUNT(*)::int FROM "ExternalIdentity" ei JOIN candidate_contacts cc ON cc.id = ei."contactId") AS "externalIdentityCount"
-  `;
+    `
+  );
 
-  const samples = await prisma.$queryRaw`
+  const samples = await runStep(
+    `Loading ${sampleCount} sample candidate contacts`,
+    () => prisma.$queryRaw`
     ${candidateContactsCte}
     SELECT
       c.id,
@@ -103,12 +129,9 @@ try {
     GROUP BY c.id, c."displayName", ce.email
     ORDER BY MAX(te."occurredAt") DESC NULLS LAST, c.id ASC
     LIMIT ${sampleCount}
-  `;
+    `
+  );
 
-  console.log("");
-  console.log("Newsletter-only contact cleanup");
-  console.log(`Mode: ${applyChanges ? "APPLY" : "DRY RUN"}`);
-  console.log("");
   console.table([
     {
       contacts: summary?.contactCount ?? 0,
@@ -127,20 +150,45 @@ try {
 
   if (!applyChanges) {
     console.log("");
+    console.log(`Dry run completed in ${formatElapsed(Date.now() - startedAt)}.`);
     console.log("No changes made. Re-run with --apply to delete these contacts.");
     process.exit(0);
   }
 
-  const deletedContacts = await prisma.$executeRaw`
-    ${candidateContactsCte}
-    DELETE FROM "Contact"
-    WHERE id IN (SELECT id FROM candidate_contacts)
-  `;
+  const deletedContacts = await runStep("Deleting newsletter-only contacts", () =>
+    prisma.$executeRaw`
+      ${candidateContactsCte}
+      DELETE FROM "Contact"
+      WHERE id IN (SELECT id FROM candidate_contacts)
+    `
+  );
 
   console.log("");
+  console.log(`Apply run completed in ${formatElapsed(Date.now() - startedAt)}.`);
   console.log(`Deleted ${deletedContacts} newsletter-only contacts.`);
 } finally {
   await prisma.$disconnect();
+}
+
+async function runStep(label, work) {
+  const stepStartedAt = Date.now();
+  console.log(`[${timestamp()}] ${label}...`);
+
+  const heartbeat = setInterval(() => {
+    console.log(`[${timestamp()}] ${label} still running (${formatElapsed(Date.now() - stepStartedAt)})...`);
+  }, 5000);
+
+  if (typeof heartbeat.unref === "function") {
+    heartbeat.unref();
+  }
+
+  try {
+    const result = await work();
+    console.log(`[${timestamp()}] ${label} complete in ${formatElapsed(Date.now() - stepStartedAt)}.`);
+    return result;
+  } finally {
+    clearInterval(heartbeat);
+  }
 }
 
 function buildPoolConfig() {
@@ -181,4 +229,20 @@ function readSampleCount(argv) {
   }
 
   return Math.max(1, Math.min(Math.trunc(parsed), 100));
+}
+
+function formatElapsed(milliseconds) {
+  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+
+  return `${minutes}m ${seconds}s`;
+}
+
+function timestamp() {
+  return new Date().toISOString();
 }
