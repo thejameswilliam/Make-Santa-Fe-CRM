@@ -3197,54 +3197,222 @@ export async function mergeContacts(primaryContactId: string, mergedContactId: s
   }
 
   const db = assertDatabase();
-
-  await db.$transaction(async (tx) => {
-    const [primary, merged] = await Promise.all([
-      tx.contact.findUnique({
-        where: { id: primaryContactId },
-        include: {
-          emails: true,
-          profileValues: true
+  const [primary, merged] = await Promise.all([
+    db.contact.findUnique({
+      where: { id: primaryContactId },
+      include: {
+        emails: true,
+        externalIds: true,
+        profileValues: true,
+        certifications: true,
+        cultivation: {
+          select: {
+            ownerUserId: true,
+            status: true,
+            nextFollowUpAt: true
+          }
         }
-      }),
-      tx.contact.findUnique({
-        where: { id: mergedContactId },
-        include: {
-          emails: true,
-          externalIds: true,
-          profileValues: true
+      }
+    }),
+    db.contact.findUnique({
+      where: { id: mergedContactId },
+      include: {
+        emails: true,
+        externalIds: true,
+        profileValues: true,
+        certifications: true,
+        cultivation: {
+          select: {
+            ownerUserId: true,
+            status: true,
+            nextFollowUpAt: true
+          }
         }
-      })
-    ]);
+      }
+    })
+  ]);
 
-    if (!primary || !merged) {
-      throw new Error("One of the contacts could not be found.");
+  if (!primary || !merged) {
+    throw new Error("One of the contacts could not be found.");
+  }
+
+  if (primary.mergedIntoId || merged.mergedIntoId) {
+    throw new Error("Only active contacts can be merged.");
+  }
+
+  const snapshot = {
+    contact: {
+      id: merged.id,
+      displayName: merged.displayName
+    },
+    emails: merged.emails.map((email) => ({
+      id: email.id,
+      email: email.email,
+      normalizedEmail: email.normalizedEmail
+    }))
+  };
+
+  const primaryEmailMap = new Map(primary.emails.map((email) => [email.normalizedEmail, email]));
+  const duplicateMergedEmailIds: string[] = [];
+  const transferMergedEmailIds: string[] = [];
+
+  for (const email of merged.emails) {
+    if (primaryEmailMap.has(email.normalizedEmail)) {
+      duplicateMergedEmailIds.push(email.id);
+      continue;
     }
 
-    const snapshot = {
-      contact: {
-        id: merged.id,
-        displayName: merged.displayName
-      },
-      emails: merged.emails.map((email) => ({
-        id: email.id,
-        email: email.email,
-        normalizedEmail: email.normalizedEmail
-      }))
+    transferMergedEmailIds.push(email.id);
+  }
+
+  const primaryIdentityKeys = new Set(
+    primary.externalIds.map((identity) => `${identity.source}::${identity.externalType}::${identity.externalId}`)
+  );
+  const duplicateMergedIdentityIds: string[] = [];
+  const transferMergedIdentityIds: string[] = [];
+
+  for (const identity of merged.externalIds) {
+    const key = `${identity.source}::${identity.externalType}::${identity.externalId}`;
+    if (primaryIdentityKeys.has(key)) {
+      duplicateMergedIdentityIds.push(identity.id);
+      continue;
+    }
+
+    transferMergedIdentityIds.push(identity.id);
+  }
+
+  const primaryProfileMap = new Map(
+    primary.profileValues.map((value) => [`${value.fieldKey}::${value.source}`, value])
+  );
+  const profileUpdatePlans: Array<{
+    id: string;
+    displayValue: string;
+    valueJson: Prisma.InputJsonValue | typeof Prisma.JsonNull;
+    observedAt: Date;
+  }> = [];
+  const duplicateMergedProfileValueIds: string[] = [];
+  const transferMergedProfileValueIds: string[] = [];
+
+  for (const value of merged.profileValues) {
+    const existing = primaryProfileMap.get(`${value.fieldKey}::${value.source}`);
+    if (!existing) {
+      transferMergedProfileValueIds.push(value.id);
+      continue;
+    }
+
+    if (existing.observedAt < value.observedAt) {
+      profileUpdatePlans.push({
+        id: existing.id,
+        displayValue: value.displayValue,
+        valueJson: toNullableInputJson(value.valueJson),
+        observedAt: value.observedAt
+      });
+    }
+
+    duplicateMergedProfileValueIds.push(value.id);
+  }
+
+  const primaryCertificationMap = new Map(
+    primary.certifications.map((certification) => [certification.certificationId, certification])
+  );
+  const certificationUpdatePlans: Array<{
+    id: string;
+    data: {
+      source: PrismaSourceSystem;
+      name: string;
+      statusKey: string | null;
+      statusLabel: string | null;
+      lastUsedAt: Date | null;
+      lastUsedLabel: string | null;
+      expiresAt: Date | null;
+      expiresLabel: string | null;
+      detail: string | null;
+      imageUrl: string | null;
+      observedAt: Date;
     };
+  }> = [];
+  const duplicateMergedCertificationIds: string[] = [];
+  const transferMergedCertificationIds: string[] = [];
 
-    const primaryEmailMap = new Map(primary.emails.map((email) => [email.normalizedEmail, email.id]));
+  for (const certification of merged.certifications) {
+    const existing = primaryCertificationMap.get(certification.certificationId);
+    if (!existing) {
+      transferMergedCertificationIds.push(certification.id);
+      continue;
+    }
 
-    for (const email of merged.emails) {
-      if (primaryEmailMap.has(email.normalizedEmail)) {
-        await tx.contactEmail.delete({
-          where: { id: email.id }
-        });
-        continue;
-      }
+    if (existing.observedAt < certification.observedAt) {
+      certificationUpdatePlans.push({
+        id: existing.id,
+        data: {
+          source: certification.source,
+          name: certification.name,
+          statusKey: certification.statusKey,
+          statusLabel: certification.statusLabel,
+          lastUsedAt: certification.lastUsedAt,
+          lastUsedLabel: certification.lastUsedLabel,
+          expiresAt: certification.expiresAt,
+          expiresLabel: certification.expiresLabel,
+          detail: certification.detail,
+          imageUrl: certification.imageUrl,
+          observedAt: certification.observedAt
+        }
+      });
+    }
 
-      await tx.contactEmail.update({
-        where: { id: email.id },
+    duplicateMergedCertificationIds.push(certification.id);
+  }
+
+  const nextManualRoleTags = Array.from(
+    new Set([...primary.manualRoleTags, ...merged.manualRoleTags])
+  ) as PrismaContactManualRoleTag[];
+
+  const nextDisplayName = primary.displayName?.trim() || merged.displayName?.trim() || null;
+  const nextIsFavorite = primary.isFavorite || merged.isFavorite;
+
+  const nextPrimaryEmailId =
+    primary.primaryEmailId ??
+    primary.emails.find((email) => email.isPrimary)?.id ??
+    [...primary.emails]
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())[0]?.id ??
+    merged.emails
+      .filter((email) => transferMergedEmailIds.includes(email.id))
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())[0]?.id ??
+    null;
+
+  const primaryCultivationStatus = normalizeCultivationStatus(primary.cultivation?.status);
+  const mergedCultivationStatus = normalizeCultivationStatus(merged.cultivation?.status);
+  const nextCultivationStatus =
+    primaryCultivationStatus === "PROSPECT" && mergedCultivationStatus !== "PROSPECT"
+      ? mergedCultivationStatus
+      : primaryCultivationStatus;
+  const nextCultivationOwnerUserId =
+    primary.cultivation?.ownerUserId ?? merged.cultivation?.ownerUserId ?? null;
+  const nextCultivationFollowUpAt =
+    primary.cultivation?.nextFollowUpAt && merged.cultivation?.nextFollowUpAt
+      ? (primary.cultivation.nextFollowUpAt <= merged.cultivation.nextFollowUpAt
+        ? primary.cultivation.nextFollowUpAt
+        : merged.cultivation.nextFollowUpAt)
+      : primary.cultivation?.nextFollowUpAt ?? merged.cultivation?.nextFollowUpAt ?? null;
+
+  await db.$transaction(async (tx) => {
+    if (duplicateMergedEmailIds.length > 0) {
+      await tx.contactEmail.deleteMany({
+        where: {
+          id: {
+            in: duplicateMergedEmailIds
+          }
+        }
+      });
+    }
+
+    if (transferMergedEmailIds.length > 0) {
+      await tx.contactEmail.updateMany({
+        where: {
+          id: {
+            in: transferMergedEmailIds
+          }
+        },
         data: {
           contactId: primary.id,
           isPrimary: false
@@ -3252,95 +3420,131 @@ export async function mergeContacts(primaryContactId: string, mergedContactId: s
       });
     }
 
-    for (const identity of merged.externalIds) {
-      const duplicate = await tx.externalIdentity.findFirst({
+    if (duplicateMergedIdentityIds.length > 0) {
+      await tx.externalIdentity.deleteMany({
         where: {
-          contactId: primary.id,
-          source: identity.source,
-          externalType: identity.externalType,
-          externalId: identity.externalId
+          id: {
+            in: duplicateMergedIdentityIds
+          }
         }
       });
+    }
 
-      if (duplicate) {
-        await tx.externalIdentity.delete({
-          where: { id: identity.id }
-        });
-        continue;
-      }
-
-      await tx.externalIdentity.update({
-        where: { id: identity.id },
+    if (transferMergedIdentityIds.length > 0) {
+      await tx.externalIdentity.updateMany({
+        where: {
+          id: {
+            in: transferMergedIdentityIds
+          }
+        },
         data: {
           contactId: primary.id
         }
       });
     }
 
-    for (const value of merged.profileValues) {
-      const existing = await tx.contactProfileValue.findFirst({
-        where: {
-          contactId: primary.id,
-          fieldKey: value.fieldKey,
-          source: value.source
-        }
-      });
-
-      if (existing) {
-        if (existing.observedAt < value.observedAt) {
-          await tx.contactProfileValue.update({
-              where: { id: existing.id },
-              data: {
-                displayValue: value.displayValue,
-                valueJson: toNullableInputJson(value.valueJson),
-                observedAt: value.observedAt
-              }
-            });
-        }
-
-        await tx.contactProfileValue.delete({
-          where: { id: value.id }
-        });
-        continue;
-      }
-
+    for (const updatePlan of profileUpdatePlans) {
       await tx.contactProfileValue.update({
-        where: { id: value.id },
+        where: { id: updatePlan.id },
+        data: {
+          displayValue: updatePlan.displayValue,
+          valueJson: updatePlan.valueJson,
+          observedAt: updatePlan.observedAt
+        }
+      });
+    }
+
+    if (duplicateMergedProfileValueIds.length > 0) {
+      await tx.contactProfileValue.deleteMany({
+        where: {
+          id: {
+            in: duplicateMergedProfileValueIds
+          }
+        }
+      });
+    }
+
+    if (transferMergedProfileValueIds.length > 0) {
+      await tx.contactProfileValue.updateMany({
+        where: {
+          id: {
+            in: transferMergedProfileValueIds
+          }
+        },
         data: {
           contactId: primary.id
         }
       });
     }
 
-    await Promise.all([
-      tx.timelineEvent.updateMany({
-        where: { contactId: merged.id },
-        data: { contactId: primary.id }
-      }),
-      tx.manualInteraction.updateMany({
-        where: { contactId: merged.id },
-        data: { contactId: primary.id }
-      }),
-      tx.unmatchedEvent.updateMany({
-        where: { assignedContactId: merged.id },
-        data: { assignedContactId: primary.id }
-      })
-    ]);
+    for (const updatePlan of certificationUpdatePlans) {
+      await tx.contactCertification.update({
+        where: { id: updatePlan.id },
+        data: updatePlan.data
+      });
+    }
 
-    const nextPrimaryEmailId =
-      primary.primaryEmailId ??
-      primary.emails.find((email) => email.isPrimary)?.id ??
-      (await tx.contactEmail.findFirst({
-        where: { contactId: primary.id },
-        orderBy: { createdAt: "asc" }
-      }))?.id ??
-      null;
+    if (duplicateMergedCertificationIds.length > 0) {
+      await tx.contactCertification.deleteMany({
+        where: {
+          id: {
+            in: duplicateMergedCertificationIds
+          }
+        }
+      });
+    }
 
-    await tx.contact.update({
-      where: { id: primary.id },
-      data: {
-        primaryEmailId: nextPrimaryEmailId
-      }
+    if (transferMergedCertificationIds.length > 0) {
+      await tx.contactCertification.updateMany({
+        where: {
+          id: {
+            in: transferMergedCertificationIds
+          }
+        },
+        data: {
+          contactId: primary.id
+        }
+      });
+    }
+
+    if (merged.cultivation) {
+      await tx.contactCultivation.upsert({
+        where: {
+          contactId: primary.id
+        },
+        create: {
+          contactId: primary.id,
+          ownerUserId: nextCultivationOwnerUserId,
+          status: nextCultivationStatus as PrismaCultivationStatus,
+          nextFollowUpAt: nextCultivationFollowUpAt
+        },
+        update: {
+          ownerUserId: nextCultivationOwnerUserId,
+          status: nextCultivationStatus as PrismaCultivationStatus,
+          nextFollowUpAt: nextCultivationFollowUpAt
+        }
+      });
+
+      await tx.contactCultivation.deleteMany({
+        where: {
+          contactId: merged.id
+        }
+      });
+    }
+
+    await tx.timelineEvent.updateMany({
+      where: { contactId: merged.id },
+      data: { contactId: primary.id }
+    });
+
+    await tx.manualInteraction.updateMany({
+      where: { contactId: merged.id },
+      data: { contactId: primary.id }
+    });
+
+    await tx.unmatchedEvent.updateMany({
+      where: { assignedContactId: merged.id },
+      data: { assignedContactId: primary.id }
     });
 
     await tx.contact.update({
@@ -3348,6 +3552,16 @@ export async function mergeContacts(primaryContactId: string, mergedContactId: s
       data: {
         mergedIntoId: primary.id,
         primaryEmailId: null
+      }
+    });
+
+    await tx.contact.update({
+      where: { id: primary.id },
+      data: {
+        displayName: nextDisplayName,
+        isFavorite: nextIsFavorite,
+        manualRoleTags: nextManualRoleTags,
+        primaryEmailId: nextPrimaryEmailId
       }
     });
 
@@ -3360,6 +3574,9 @@ export async function mergeContacts(primaryContactId: string, mergedContactId: s
         snapshot
       }
     });
+  }, {
+    maxWait: 10_000,
+    timeout: 20_000
   });
 }
 
