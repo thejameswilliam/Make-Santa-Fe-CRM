@@ -499,6 +499,201 @@ function chunkItems<T>(items: T[], chunkSize: number) {
   return chunks;
 }
 
+function buildLastNameSortValue(displayName: string | null | undefined) {
+  const normalized = displayName?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return "";
+  }
+
+  const parts = normalized.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return "";
+  }
+
+  return parts[parts.length - 1] ?? "";
+}
+
+async function buildContactListSummaryUpdates(
+  contactIds: string[],
+  dbClient: DatabaseClient
+) {
+  if (contactIds.length === 0) {
+    return [];
+  }
+
+  const [contacts, timelineEvents, manualInteractions] = await Promise.all([
+    dbClient.contact.findMany({
+      where: {
+        id: {
+          in: contactIds
+        }
+      },
+      select: {
+        id: true,
+        displayName: true
+      }
+    }),
+    dbClient.timelineEvent.findMany({
+      where: {
+        contactId: {
+          in: contactIds
+        }
+      },
+      select: {
+        contactId: true,
+        occurredAt: true,
+        laneKey: true,
+        eventKind: true,
+        amountCents: true,
+        metadata: true,
+        rawPayload: true
+      }
+    }),
+    dbClient.manualInteraction.findMany({
+      where: {
+        contactId: {
+          in: contactIds
+        }
+      },
+      select: {
+        contactId: true,
+        occurredAt: true,
+        laneKey: true,
+        metadata: true,
+        interactionType: {
+          select: {
+            slug: true
+          }
+        }
+      }
+    })
+  ]);
+
+  const summaryByContactId = new Map(
+    contacts.map((contact) => [
+      contact.id,
+      {
+        displayName: contact.displayName,
+        lastInteractionAt: null as Date | null,
+        lastNonEmailInteractionAt: null as Date | null,
+        latestLaneSeenAt: new Map<PrismaLaneKey, number>(),
+        photoUrl: null as string | null,
+        photoOccurredAt: 0,
+        hasDonorHistory: false,
+        donationTotalCents: 0,
+        volunteerMinutes: 0,
+        spaceUseCount: 0
+      }
+    ])
+  );
+
+  function recordActivity(contactId: string, laneKey: PrismaLaneKey, occurredAt: Date) {
+    const summary = summaryByContactId.get(contactId);
+    if (!summary) {
+      return;
+    }
+
+    const occurredAtMs = occurredAt.getTime();
+
+    if (!summary.lastInteractionAt || occurredAtMs > summary.lastInteractionAt.getTime()) {
+      summary.lastInteractionAt = occurredAt;
+    }
+
+    if (
+      laneKey !== PrismaLaneKey.EMAIL &&
+      (!summary.lastNonEmailInteractionAt || occurredAtMs > summary.lastNonEmailInteractionAt.getTime())
+    ) {
+      summary.lastNonEmailInteractionAt = occurredAt;
+    }
+
+    const currentLaneSeenAt = summary.latestLaneSeenAt.get(laneKey) ?? 0;
+    if (occurredAtMs > currentLaneSeenAt) {
+      summary.latestLaneSeenAt.set(laneKey, occurredAtMs);
+    }
+  }
+
+  for (const event of timelineEvents) {
+    const summary = summaryByContactId.get(event.contactId);
+    if (!summary) {
+      continue;
+    }
+
+    recordActivity(event.contactId, event.laneKey, event.occurredAt);
+
+    if (event.eventKind === "donation") {
+      summary.hasDonorHistory = true;
+      if (typeof event.amountCents === "number" && event.amountCents > 0) {
+        summary.donationTotalCents += event.amountCents;
+      }
+    }
+
+    if (event.laneKey === PrismaLaneKey.VOLUNTEER) {
+      const durationMinutes = Math.max(0, readJsonNumber(toJsonRecord(event.metadata)?.durationMinutes) ?? 0);
+      summary.volunteerMinutes += durationMinutes;
+    }
+
+    if (event.laneKey === PrismaLaneKey.SPACE_USE) {
+      summary.spaceUseCount += 1;
+    }
+
+    const photoUrl = extractPhotoUrlFromRawPayload(event.rawPayload);
+    const occurredAtMs = event.occurredAt.getTime();
+    if (photoUrl && occurredAtMs >= summary.photoOccurredAt) {
+      summary.photoUrl = photoUrl;
+      summary.photoOccurredAt = occurredAtMs;
+    }
+  }
+
+  for (const interaction of manualInteractions) {
+    const summary = summaryByContactId.get(interaction.contactId);
+    if (!summary) {
+      continue;
+    }
+
+    recordActivity(interaction.contactId, interaction.laneKey, interaction.occurredAt);
+
+    if (interaction.interactionType.slug === "donation") {
+      summary.hasDonorHistory = true;
+      const amountCents = readAmountCentsFromMetadata(interaction.metadata);
+      if (amountCents && amountCents > 0) {
+        summary.donationTotalCents += amountCents;
+      }
+    }
+
+    if (interaction.laneKey === PrismaLaneKey.VOLUNTEER) {
+      const durationMinutes = Math.max(0, readJsonNumber(toJsonRecord(interaction.metadata)?.durationMinutes) ?? 0);
+      summary.volunteerMinutes += durationMinutes;
+    }
+
+    if (interaction.laneKey === PrismaLaneKey.SPACE_USE) {
+      summary.spaceUseCount += 1;
+    }
+  }
+
+  return contacts.map((contact) => {
+    const summary = summaryByContactId.get(contact.id)!;
+    const sortedLanes = [...summary.latestLaneSeenAt.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .map(([laneKey]) => laneKey);
+
+    return {
+      id: contact.id,
+      data: {
+        photoUrl: summary.photoUrl,
+        recentLaneKeys: sortedLanes.slice(0, 6),
+        activityLaneKeys: sortedLanes,
+        lastInteractionAt: summary.lastInteractionAt,
+        lastNonEmailInteractionAt: summary.lastNonEmailInteractionAt,
+        hasDonorHistory: summary.hasDonorHistory,
+        donationTotalCents: summary.donationTotalCents,
+        volunteerMinutes: summary.volunteerMinutes,
+        spaceUseCount: summary.spaceUseCount,
+        lastNameSortValue: buildLastNameSortValue(summary.displayName)
+      }
+    };
+  });
+}
+
 export async function refreshContactListSummaries(
   contactIds: string[],
   dbClient: DatabaseClient = assertDatabase()
@@ -513,184 +708,16 @@ export async function refreshContactListSummaries(
   }
 
   for (const contactIdChunk of chunkItems(uniqueContactIds, CONTACT_SUMMARY_REFRESH_CHUNK_SIZE)) {
-    const contactIdSql = Prisma.join(contactIdChunk.map((contactId) => Prisma.sql`${contactId}`));
+    const updates = await buildContactListSummaryUpdates(contactIdChunk, dbClient);
 
-    await dbClient.$executeRaw`
-      WITH target_contacts AS (
-        SELECT
-          c.id,
-          COALESCE(BTRIM(c."displayName"), '') AS "displayName"
-        FROM "Contact" c
-        WHERE c.id IN (${contactIdSql})
-      ),
-      combined_activities AS (
-        SELECT
-          te."contactId",
-          te."occurredAt",
-          te."laneKey",
-          te."eventKind",
-          te."amountCents",
-          te.metadata::jsonb AS metadata,
-          te."rawPayload"::jsonb AS "rawPayload",
-          NULL::text AS "interactionSlug"
-        FROM "TimelineEvent" te
-        JOIN target_contacts tc ON tc.id = te."contactId"
-
-        UNION ALL
-
-        SELECT
-          mi."contactId",
-          mi."occurredAt",
-          mi."laneKey",
-          NULL::text AS "eventKind",
-          NULL::integer AS "amountCents",
-          mi.metadata::jsonb AS metadata,
-          NULL::jsonb AS "rawPayload",
-          it.slug AS "interactionSlug"
-        FROM "ManualInteraction" mi
-        JOIN "InteractionType" it ON it.id = mi."interactionTypeId"
-        JOIN target_contacts tc ON tc.id = mi."contactId"
-      ),
-      activity_rollup AS (
-        SELECT
-          tc.id AS "contactId",
-          MAX(ca."occurredAt") AS "lastInteractionAt",
-          MAX(ca."occurredAt") FILTER (WHERE ca."laneKey" <> 'EMAIL'::"LaneKey") AS "lastNonEmailInteractionAt"
-        FROM target_contacts tc
-        LEFT JOIN combined_activities ca ON ca."contactId" = tc.id
-        GROUP BY tc.id
-      ),
-      lane_rollup AS (
-        SELECT
-          tc.id AS "contactId",
-          COALESCE(
-            ARRAY(
-              SELECT lane_rows."laneKey"
-              FROM (
-                SELECT
-                  ca."laneKey",
-                  MAX(ca."occurredAt") AS "lastSeenAt"
-                FROM combined_activities ca
-                WHERE ca."contactId" = tc.id
-                GROUP BY ca."laneKey"
-                ORDER BY "lastSeenAt" DESC, ca."laneKey" ASC
-                LIMIT 6
-              ) AS lane_rows
-            ),
-            ARRAY[]::"LaneKey"[]
-          ) AS "recentLaneKeys",
-          COALESCE(
-            ARRAY(
-              SELECT lane_rows."laneKey"
-              FROM (
-                SELECT
-                  ca."laneKey",
-                  MAX(ca."occurredAt") AS "lastSeenAt"
-                FROM combined_activities ca
-                WHERE ca."contactId" = tc.id
-                GROUP BY ca."laneKey"
-                ORDER BY "lastSeenAt" DESC, ca."laneKey" ASC
-              ) AS lane_rows
-            ),
-            ARRAY[]::"LaneKey"[]
-          ) AS "activityLaneKeys"
-        FROM target_contacts tc
-      ),
-      photo_rollup AS (
-        SELECT DISTINCT ON (te."contactId")
-          te."contactId",
-          NULLIF(BTRIM(te."rawPayload"::jsonb -> 'profile' ->> 'photoUrl'), '') AS "photoUrl"
-        FROM "TimelineEvent" te
-        JOIN target_contacts tc ON tc.id = te."contactId"
-        WHERE NULLIF(BTRIM(te."rawPayload"::jsonb -> 'profile' ->> 'photoUrl'), '') IS NOT NULL
-        ORDER BY te."contactId", te."occurredAt" DESC
-      ),
-      metrics_rollup AS (
-        SELECT
-          tc.id AS "contactId",
-          COALESCE(
-            SUM(
-              CASE
-                WHEN ca."eventKind" = 'donation' AND ca."amountCents" IS NOT NULL THEN ca."amountCents"
-                ELSE 0
-              END
-            ),
-            0
-          ) +
-          COALESCE(
-            SUM(
-              CASE
-                WHEN ca."interactionSlug" = 'donation' AND jsonb_typeof(ca.metadata -> 'amountCents') = 'number'
-                  THEN ROUND((ca.metadata ->> 'amountCents')::numeric)::int
-                ELSE 0
-              END
-            ),
-            0
-          ) AS "donationTotalCents",
-          COALESCE(
-            BOOL_OR(ca."eventKind" = 'donation' OR ca."interactionSlug" = 'donation'),
-            false
-          ) AS "hasDonorHistory",
-          COALESCE(
-            SUM(
-              CASE
-                WHEN ca."laneKey" = 'VOLUNTEER'::"LaneKey" AND jsonb_typeof(ca.metadata -> 'durationMinutes') = 'number'
-                  THEN GREATEST(ROUND((ca.metadata ->> 'durationMinutes')::numeric)::int, 0)
-                ELSE 0
-              END
-            ),
-            0
-          ) AS "volunteerMinutes",
-          COALESCE(
-            SUM(
-              CASE
-                WHEN ca."laneKey" = 'SPACE_USE'::"LaneKey" THEN 1
-                ELSE 0
-              END
-            ),
-            0
-          ) AS "spaceUseCount"
-        FROM target_contacts tc
-        LEFT JOIN combined_activities ca ON ca."contactId" = tc.id
-        GROUP BY tc.id
-      ),
-      summary AS (
-        SELECT
-          tc.id AS "contactId",
-          ar."lastInteractionAt",
-          ar."lastNonEmailInteractionAt",
-          lr."recentLaneKeys",
-          lr."activityLaneKeys",
-          pr."photoUrl",
-          mr."hasDonorHistory",
-          mr."donationTotalCents",
-          mr."volunteerMinutes",
-          mr."spaceUseCount",
-          CASE
-            WHEN tc."displayName" = '' THEN ''
-            ELSE LOWER(REGEXP_REPLACE(tc."displayName", '^.*\\s+', ''))
-          END AS "lastNameSortValue"
-        FROM target_contacts tc
-        LEFT JOIN activity_rollup ar ON ar."contactId" = tc.id
-        LEFT JOIN lane_rollup lr ON lr."contactId" = tc.id
-        LEFT JOIN photo_rollup pr ON pr."contactId" = tc.id
-        LEFT JOIN metrics_rollup mr ON mr."contactId" = tc.id
-      )
-      UPDATE "Contact" c
-      SET
-        "lastInteractionAt" = summary."lastInteractionAt",
-        "lastNonEmailInteractionAt" = summary."lastNonEmailInteractionAt",
-        "recentLaneKeys" = summary."recentLaneKeys",
-        "activityLaneKeys" = summary."activityLaneKeys",
-        "photoUrl" = summary."photoUrl",
-        "hasDonorHistory" = summary."hasDonorHistory",
-        "donationTotalCents" = summary."donationTotalCents",
-        "volunteerMinutes" = summary."volunteerMinutes",
-        "spaceUseCount" = summary."spaceUseCount",
-        "lastNameSortValue" = summary."lastNameSortValue"
-      FROM summary
-      WHERE c.id = summary."contactId"
-    `;
+    for (const update of updates) {
+      await dbClient.contact.update({
+        where: {
+          id: update.id
+        },
+        data: update.data
+      });
+    }
   }
 }
 
