@@ -169,11 +169,6 @@ export function PeopleSearch({
               </label>
             </div>
             {showMinimumMessage ? <p className="form-note">Type at least 3 characters to add name or email search.</p> : null}
-            {!includeInactive ? (
-              <p className="form-note">
-                Inactive contacts are hidden by default so people search stays fast and focused.
-              </p>
-            ) : null}
             {loading ? <p className="form-note">Searching…</p> : null}
           </div>
           <CreateContactForm />
