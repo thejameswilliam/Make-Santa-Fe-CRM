@@ -293,6 +293,9 @@ function mapTimelineEntry(input: {
   metadata?: unknown;
   rawPayload?: unknown;
   manualInteractionTypeId?: string | null;
+  manualAmountValue?: string | null;
+  editedAt?: Date | null;
+  editedByName?: string | null;
 }): TimelineEntry {
   const sourceLink = buildWordPressSourceLink({
     eventKind: input.eventKind,
@@ -318,7 +321,10 @@ function mapTimelineEntry(input: {
     metadata: (input.metadata as Record<string, unknown> | null | undefined) ?? null,
     sourceAdminUrl: sourceLink?.url ?? null,
     sourceAdminLabel: sourceLink?.label ?? null,
-    manualInteractionTypeId: input.manualInteractionTypeId ?? null
+    manualInteractionTypeId: input.manualInteractionTypeId ?? null,
+    manualAmountValue: input.manualAmountValue ?? null,
+    editedAt: input.editedAt?.toISOString() ?? null,
+    editedByName: input.editedByName ?? null
   };
 }
 
@@ -440,6 +446,14 @@ function readAmountCentsFromMetadata(metadata: Prisma.JsonValue | null | undefin
   }
 
   return Math.round(amountCents);
+}
+
+function formatAmountCentsAsInputValue(amountCents?: number | null) {
+  if (typeof amountCents !== "number" || !Number.isFinite(amountCents)) {
+    return null;
+  }
+
+  return (amountCents / 100).toFixed(2);
 }
 
 function formatCount(value: number) {
@@ -2569,7 +2583,18 @@ export async function getContactDetail(contactId: string): Promise<ContactDetail
             ? readAmountCentsFromMetadata(interaction.metadata)
             : null,
         metadata: interaction.metadata,
-        manualInteractionTypeId: interaction.interactionTypeId
+        manualInteractionTypeId: interaction.interactionTypeId,
+        manualAmountValue:
+          interaction.interactionType.slug === "donation"
+            ? formatAmountCentsAsInputValue(readAmountCentsFromMetadata(interaction.metadata))
+            : null,
+        editedAt:
+          interaction.updatedByName ||
+          interaction.updatedByUserId ||
+          interaction.updatedAt.getTime() - interaction.createdAt.getTime() > 1000
+            ? interaction.updatedAt
+            : null,
+        editedByName: interaction.updatedByName?.trim() || null
       })
     )
   ].sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime());
@@ -3255,6 +3280,119 @@ export async function updateManualInteractionClassification(input: {
     laneKey: interactionType.laneKey as LaneKey,
     typeLabel: interactionType.name,
     manualInteractionTypeId: interactionType.id
+  };
+}
+
+export async function updateManualInteraction(input: {
+  interactionId: string;
+  interactionTypeId: string;
+  occurredAt: string;
+  title: string;
+  body?: string | null;
+  amountValue?: string | null;
+  actor?: SessionUser | null;
+}) {
+  const db = assertDatabase();
+  const interactionType = await db.interactionType.findUnique({
+    where: { id: input.interactionTypeId }
+  });
+
+  if (!interactionType) {
+    throw new Error("Interaction type not found.");
+  }
+
+  const interaction = await db.manualInteraction.findUnique({
+    where: { id: input.interactionId },
+    select: {
+      id: true,
+      contactId: true
+    }
+  });
+
+  if (!interaction) {
+    throw new Error("Manual interaction not found.");
+  }
+
+  const title = input.title.trim();
+  if (!title) {
+    throw new Error("Title is required.");
+  }
+
+  const occurredAt = new Date(input.occurredAt);
+  if (Number.isNaN(occurredAt.getTime())) {
+    throw new Error("Date and time are invalid.");
+  }
+
+  const amountCents = parseCurrencyAmountToCents(input.amountValue ?? null);
+  if (interactionType.slug === "donation" && (!amountCents || amountCents <= 0)) {
+    throw new Error("Donation amount is required.");
+  }
+
+  const metadata =
+    interactionType.slug === "donation" && amountCents
+      ? {
+          amountCents,
+          currency: "USD"
+        }
+      : null;
+
+  const updated = await db.manualInteraction.update({
+    where: { id: interaction.id },
+    data: {
+      interactionTypeId: interactionType.id,
+      occurredAt,
+      title,
+      body: input.body?.trim() || null,
+      laneKey: interactionType.laneKey,
+      metadata: metadata ? toInputJson(metadata) : Prisma.JsonNull,
+      updatedByUserId: input.actor?.id ?? null,
+      updatedByName: input.actor?.name ?? null
+    },
+    select: {
+      id: true,
+      contactId: true,
+      occurredAt: true,
+      title: true,
+      body: true,
+      laneKey: true,
+      metadata: true,
+      updatedAt: true,
+      updatedByName: true,
+      interactionTypeId: true,
+      interactionType: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          laneKey: true
+        }
+      }
+    }
+  });
+
+  await refreshContactListSummaries([updated.contactId], db);
+
+  const nextAmountCents =
+    updated.interactionType.slug === "donation"
+      ? readAmountCentsFromMetadata(updated.metadata)
+      : null;
+
+  return {
+    id: updated.id,
+    eventKind: updated.interactionType.slug,
+    laneKey: updated.laneKey as LaneKey,
+    typeLabel: updated.interactionType.name,
+    title: updated.title,
+    summary: updated.body,
+    occurredAt: updated.occurredAt.toISOString(),
+    amountLabel: formatCurrency(nextAmountCents, "USD"),
+    manualInteractionTypeId: updated.interactionTypeId,
+    manualAmountValue:
+      updated.interactionType.slug === "donation"
+        ? formatAmountCentsAsInputValue(nextAmountCents)
+        : null,
+    editedAt: updated.updatedAt.toISOString(),
+    editedByName: updated.updatedByName?.trim() || null
   };
 }
 

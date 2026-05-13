@@ -257,6 +257,8 @@ model ManualInteraction {
   laneKey           LaneKey
   createdByUserId   String?
   createdByName     String?
+  updatedByUserId   String?
+  updatedByName     String?
   metadata          Json?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt

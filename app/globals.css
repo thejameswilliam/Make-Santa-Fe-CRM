@@ -1974,6 +1974,106 @@ textarea::placeholder {
   font-size: 0.8rem;
 }
 
+.timeline-inline-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.timeline-inline-edit-button {
+  padding: 2px 6px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: #fff;
+  background: color-mix(in srgb, var(--lane-color) 12%, rgba(255, 255, 255, 0.02));
+  border: 1px solid color-mix(in srgb, var(--lane-color) 28%, transparent);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.timeline-inline-edit-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--lane-color) 48%, white 8%);
+  background: color-mix(in srgb, var(--lane-color) 18%, rgba(255, 255, 255, 0.03));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--lane-color) 16%, transparent);
+}
+
+.timeline-inline-edit-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.timeline-edit-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--lane-color) 18%, rgba(255, 255, 255, 0.04));
+}
+
+.timeline-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 10px;
+}
+
+.timeline-edit-form .field {
+  min-width: 0;
+}
+
+.timeline-edit-form .field label {
+  gap: 5px;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--lane-color) 60%, rgba(218, 226, 236, 0.88));
+}
+
+.timeline-edit-form .field input,
+.timeline-edit-form .field select,
+.timeline-edit-form .field textarea {
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  color: #f7fbff;
+  background: color-mix(in srgb, var(--lane-color) 7%, rgba(4, 7, 14, 0.92));
+  border: 1px solid color-mix(in srgb, var(--lane-color) 22%, rgba(255, 255, 255, 0.06));
+  box-shadow: none;
+}
+
+.timeline-edit-form .field textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.timeline-edit-form .field input:focus,
+.timeline-edit-form .field select:focus,
+.timeline-edit-form .field textarea:focus {
+  border-color: color-mix(in srgb, var(--lane-color) 44%, white 12%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--lane-color) 16%, transparent);
+}
+
+.timeline-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.timeline-edit-actions .button-secondary,
+.timeline-edit-actions .button-ghost {
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.timeline-edited-stamp {
+  margin: 8px 0 0;
+  font-size: 0.67rem;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--lane-color) 48%, rgba(214, 220, 230, 0.74));
+}
+
 .pill-row {
   display: flex;
   flex-wrap: wrap;

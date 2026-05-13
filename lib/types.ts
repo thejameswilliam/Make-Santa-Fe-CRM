@@ -192,6 +192,9 @@ export interface TimelineEntry {
   sourceAdminUrl?: string | null;
   sourceAdminLabel?: string | null;
   manualInteractionTypeId?: string | null;
+  manualAmountValue?: string | null;
+  editedAt?: string | null;
+  editedByName?: string | null;
 }
 
 export interface ContactDetail {

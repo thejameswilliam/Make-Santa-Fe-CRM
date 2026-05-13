@@ -17,6 +17,7 @@ import { formatDateTime } from "@/lib/utils";
 interface ManualInteractionTypeOption {
   id: string;
   name: string;
+  slug: string;
   laneKey: LaneKey;
 }
 
@@ -43,6 +44,32 @@ function collectLaneKeys(entries: TimelineEntry[]) {
   return (Object.keys(LANE_META) as LaneKey[]).filter((laneKey) => seen.has(laneKey));
 }
 
+function formatDateTimeLocalInput(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function buildManualTitlePlaceholder(slug?: string | null) {
+  if (slug === "donation") {
+    return "Cash donation at front desk";
+  }
+
+  if (slug === "membership_complimentary") {
+    return "Complimentary membership granted";
+  }
+
+  if (slug?.startsWith("membership_")) {
+    return "Membership status updated";
+  }
+
+  return "Volunteer orientation attended";
+}
+
 export function Timeline({
   entries,
   editable = false,
@@ -52,11 +79,30 @@ export function Timeline({
   const [localEntries, setLocalEntries] = useState(entries);
   const [selectedLaneKeys, setSelectedLaneKeys] = useState<LaneKey[]>(collectLaneKeys(entries));
   const [savingEntryId, setSavingEntryId] = useState<string | null>(null);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{
+    interactionTypeId: string;
+    occurredAt: string;
+    title: string;
+    body: string;
+    amountValue: string;
+  } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalEntries(entries);
   }, [entries]);
+
+  useEffect(() => {
+    if (!editingEntryId) {
+      return;
+    }
+
+    if (!localEntries.some((entry) => entry.id === editingEntryId && entry.recordType === "MANUAL")) {
+      setEditingEntryId(null);
+      setEditDraft(null);
+    }
+  }, [editingEntryId, localEntries]);
 
   const availableLaneKeys = collectLaneKeys(localEntries);
   const availableLaneSignature = availableLaneKeys.join("|");
@@ -180,54 +226,60 @@ export function Timeline({
     }
   }
 
-  async function updateManualClassification(entryId: string, interactionTypeId: string) {
-    const nextType = manualInteractionTypeOptions.find((option) => option.id === interactionTypeId);
-    const previousEntry = localEntries.find((entry) => entry.id === entryId);
+  function beginManualEdit(entry: TimelineEntry) {
+    setSaveError(null);
+    setEditingEntryId(entry.id);
+    setEditDraft({
+      interactionTypeId:
+        entry.manualInteractionTypeId ?? manualInteractionTypeOptions[0]?.id ?? "",
+      occurredAt: formatDateTimeLocalInput(entry.occurredAt),
+      title: entry.title,
+      body: entry.summary ?? "",
+      amountValue: entry.manualAmountValue ?? ""
+    });
+  }
 
-    if (!nextType || !previousEntry) {
+  function cancelManualEdit() {
+    setEditingEntryId(null);
+    setEditDraft(null);
+    setSaveError(null);
+  }
+
+  async function updateManualEntry(entryId: string) {
+    if (!editDraft) {
       return;
     }
 
     setSaveError(null);
     setSavingEntryId(entryId);
-    setLocalEntries((current) =>
-      current.map((entry) =>
-        entry.id === entryId
-          ? {
-              ...entry,
-              laneKey: nextType.laneKey,
-              typeLabel: nextType.name,
-              manualInteractionTypeId: nextType.id
-            }
-          : entry
-      )
-    );
 
     try {
-      const response = await fetch(`/api/manual-interactions/${entryId}/type`, {
-        method: "POST",
+      const response = await fetch(`/api/manual-interactions/${entryId}`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          interactionTypeId
-        })
+        body: JSON.stringify(editDraft)
       });
 
       if (!response.ok) {
-        throw new Error(await readErrorMessage(response, "Could not update the interaction type."));
+        throw new Error(await readErrorMessage(response, "Could not update the manual interaction."));
       }
 
       const result = (await response.json()) as {
+        id?: string;
         eventKind?: string;
         laneKey?: LaneKey;
         typeLabel?: string;
+        title?: string;
+        summary?: string | null;
+        occurredAt?: string;
+        amountLabel?: string | null;
         manualInteractionTypeId?: string;
+        manualAmountValue?: string | null;
+        editedAt?: string | null;
+        editedByName?: string | null;
       };
-
-      if (!result.laneKey || !result.typeLabel || !result.manualInteractionTypeId) {
-        throw new Error("The updated interaction type response was incomplete.");
-      }
 
       setLocalEntries((current) =>
         current.map((entry) =>
@@ -235,16 +287,24 @@ export function Timeline({
             ? {
                 ...entry,
                 eventKind: result.eventKind ?? entry.eventKind,
-                laneKey: result.laneKey ?? nextType.laneKey,
-                typeLabel: result.typeLabel ?? nextType.name,
-                manualInteractionTypeId: result.manualInteractionTypeId ?? nextType.id
+                laneKey: result.laneKey ?? entry.laneKey,
+                typeLabel: result.typeLabel ?? entry.typeLabel,
+                title: result.title ?? entry.title,
+                summary: result.summary ?? null,
+                occurredAt: result.occurredAt ?? entry.occurredAt,
+                amountLabel: result.amountLabel ?? null,
+                manualInteractionTypeId: result.manualInteractionTypeId ?? entry.manualInteractionTypeId,
+                manualAmountValue: result.manualAmountValue ?? null,
+                editedAt: result.editedAt ?? null,
+                editedByName: result.editedByName ?? null
               }
             : entry
         )
       );
+      setEditingEntryId(null);
+      setEditDraft(null);
     } catch (error) {
-      setLocalEntries((current) => current.map((entry) => (entry.id === entryId ? previousEntry : entry)));
-      setSaveError(error instanceof Error ? error.message : "Could not update the interaction type.");
+      setSaveError(error instanceof Error ? error.message : "Could not update the manual interaction.");
     } finally {
       setSavingEntryId((current) => (current === entryId ? null : current));
     }
@@ -365,6 +425,14 @@ export function Timeline({
                   const lane = LANE_META[item.entry.laneKey];
                   const laneIndex = layout.lanes.indexOf(item.entry.laneKey);
                   const laneCenterPercent = ((laneIndex + 0.5) / Math.max(layout.lanes.length, 1)) * 50;
+                  const activeEditDraft =
+                    item.entry.recordType === "MANUAL" && editingEntryId === item.entry.id ? editDraft : null;
+                  const isEditingManualEntry = !!activeEditDraft;
+                  const selectedEditType = activeEditDraft
+                    ? manualInteractionTypeOptions.find((option) => option.id === activeEditDraft.interactionTypeId) ?? null
+                    : null;
+                  const showDonationAmount = selectedEditType?.slug === "donation";
+                  const titlePlaceholder = buildManualTitlePlaceholder(selectedEditType?.slug);
 
                   return (
                     <article
@@ -388,33 +456,30 @@ export function Timeline({
                             {item.entry.amountLabel ? <span className="timeline-amount">{item.entry.amountLabel}</span> : null}
                           </div>
 
-                          <h4 className="timeline-title">{item.entry.title}</h4>
+                          <h4 className="timeline-title">
+                            {activeEditDraft ? activeEditDraft.title || item.entry.title : item.entry.title}
+                          </h4>
 
                           <div className="timeline-meta">
                             {editable ? (
                               item.entry.recordType === "MANUAL" ? (
-                                <label
-                                  className="timeline-type-select"
-                                  data-saving={savingEntryId === item.entry.id ? "true" : "false"}
-                                >
-                                  <select
-                                    aria-label={`Interaction type for ${item.entry.title}`}
-                                    disabled={
-                                      savingEntryId === item.entry.id ||
-                                      manualInteractionTypeOptions.length === 0
-                                    }
-                                    onChange={(event) =>
-                                      void updateManualClassification(item.entry.id, event.target.value)
-                                    }
-                                    value={item.entry.manualInteractionTypeId ?? ""}
-                                  >
-                                    {manualInteractionTypeOptions.map((option) => (
-                                      <option key={option.id} value={option.id}>
-                                        {option.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
+                                isEditingManualEntry ? (
+                                  <span>{selectedEditType?.name ?? item.entry.typeLabel}</span>
+                                ) : (
+                                  <>
+                                    <span>{item.entry.typeLabel}</span>
+                                    <span className="timeline-inline-actions">
+                                      <button
+                                        className="timeline-inline-edit-button"
+                                        disabled={savingEntryId === item.entry.id}
+                                        onClick={() => beginManualEdit(item.entry)}
+                                        type="button"
+                                      >
+                                        Edit
+                                      </button>
+                                    </span>
+                                  </>
+                                )
                               ) : (
                                 <label
                                   className="timeline-type-select"
@@ -455,7 +520,164 @@ export function Timeline({
                           </div>
                         </div>
 
-                        {item.entry.summary ? <p className="timeline-summary muted">{item.entry.summary}</p> : null}
+                        {activeEditDraft ? (
+                          <form
+                            className="timeline-edit-form"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void updateManualEntry(item.entry.id);
+                            }}
+                          >
+                            <div className="timeline-edit-grid">
+                              <div className="field">
+                                <label>
+                                  Interaction type
+                                  <select
+                                    disabled={savingEntryId === item.entry.id || manualInteractionTypeOptions.length === 0}
+                                    onChange={(event) =>
+                                      setEditDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              interactionTypeId: event.target.value
+                                            }
+                                          : current
+                                      )
+                                    }
+                                    required
+                                    value={activeEditDraft.interactionTypeId}
+                                  >
+                                    {manualInteractionTypeOptions.map((option) => (
+                                      <option key={option.id} value={option.id}>
+                                        {option.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+
+                              {showDonationAmount ? (
+                                <div className="field">
+                                  <label>
+                                    Donation amount
+                                    <input
+                                      disabled={savingEntryId === item.entry.id}
+                                      inputMode="decimal"
+                                      min="0"
+                                      onChange={(event) =>
+                                        setEditDraft((current) =>
+                                          current
+                                            ? {
+                                                ...current,
+                                                amountValue: event.target.value
+                                              }
+                                            : current
+                                      )
+                                    }
+                                    placeholder="75.00"
+                                    required
+                                    step="0.01"
+                                    type="number"
+                                    value={activeEditDraft.amountValue}
+                                  />
+                                </label>
+                              </div>
+                              ) : null}
+
+                              <div className="field">
+                                <label>
+                                  Date and time
+                                  <input
+                                    disabled={savingEntryId === item.entry.id}
+                                    onChange={(event) =>
+                                      setEditDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              occurredAt: event.target.value
+                                            }
+                                          : current
+                                      )
+                                    }
+                                    required
+                                    type="datetime-local"
+                                    value={activeEditDraft.occurredAt}
+                                  />
+                                </label>
+                              </div>
+
+                              <div className="field">
+                                <label>
+                                  Title
+                                  <input
+                                    disabled={savingEntryId === item.entry.id}
+                                    onChange={(event) =>
+                                      setEditDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              title: event.target.value
+                                            }
+                                          : current
+                                      )
+                                    }
+                                    placeholder={titlePlaceholder}
+                                    required
+                                    value={activeEditDraft.title}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+
+                            <div className="field">
+                              <label>
+                                Details
+                                <textarea
+                                  disabled={savingEntryId === item.entry.id}
+                                  onChange={(event) =>
+                                    setEditDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            body: event.target.value
+                                          }
+                                        : current
+                                    )
+                                  }
+                                  placeholder="Add the context staff should see later."
+                                  value={activeEditDraft.body}
+                                />
+                              </label>
+                            </div>
+
+                            <div className="timeline-edit-actions">
+                              <button
+                                className="button-secondary"
+                                disabled={savingEntryId === item.entry.id}
+                                type="submit"
+                              >
+                                {savingEntryId === item.entry.id ? "Saving..." : "Save changes"}
+                              </button>
+                              <button
+                                className="button-ghost"
+                                disabled={savingEntryId === item.entry.id}
+                                onClick={cancelManualEdit}
+                                type="button"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            {item.entry.summary ? <p className="timeline-summary muted">{item.entry.summary}</p> : null}
+                            {item.entry.recordType === "MANUAL" && item.entry.editedAt ? (
+                              <p className="timeline-edited-stamp">
+                                Edited by {item.entry.editedByName || "Staff"} · {formatDateTime(item.entry.editedAt)}
+                              </p>
+                            ) : null}
+                          </>
+                        )}
                       </div>
                     </article>
                   );
