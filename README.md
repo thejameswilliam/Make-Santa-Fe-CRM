@@ -89,7 +89,8 @@ The cleanest production path for this app is DigitalOcean App Platform plus a ma
   - App Platform spec for one web service
   - managed PostgreSQL database component
   - pre-deploy schema sync job
-  - health check at `/api/health`
+  - readiness check at `/api/ready`
+  - diagnostic health check at `/api/health`
 - `.env.example`
   - local/prod variable reference
 
@@ -121,7 +122,8 @@ The cleanest production path for this app is DigitalOcean App Platform plus a ma
     - run command: `npm run db:push:prod`
    - `DATABASE_URL` bound on the job component itself
    - `DATABASE_CA_CERT` bound on the job component itself
-6. Confirm the health check path is `/api/health`.
+6. Confirm the readiness health check path is `/api/ready`.
+7. Keep the liveness check path at `/api/health`.
 
 If the `schema-sync` deploy log ever says Prisma is trying to reach `localhost:5432`, that means the job component is missing `DATABASE_URL` at runtime and is not actually bound to the managed database yet.
 
@@ -135,10 +137,11 @@ After the first successful deploy:
 
 ### First production checklist
 
-1. Confirm `https://crm.makesantafe.org/api/health` returns `ok: true`.
-2. Log in with a real WordPress application password.
-3. Run the first full backfill from the CRM.
-4. Verify WooCommerce, Gravity Forms, newsletter, volunteer, sign-in, and reservation data are arriving correctly.
+1. Confirm `https://crm.makesantafe.org/api/ready` returns HTTP `200` with `"ready": true`.
+2. Confirm `https://crm.makesantafe.org/api/health` returns diagnostics with `databaseReachable: true` and `schemaReady: true`.
+3. Log in with a real WordPress application password.
+4. Run the first full backfill from the CRM.
+5. Verify WooCommerce, Gravity Forms, newsletter, volunteer, sign-in, and reservation data are arriving correctly.
 
 ## Data flow
 
