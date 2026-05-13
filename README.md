@@ -118,8 +118,12 @@ The cleanest production path for this app is DigitalOcean App Platform plus a ma
    - run command: `npm run start:do`
 5. Make sure the pre-deploy job uses:
    - build command: `npm run db:generate`
-   - run command: `npm run db:push:prod`
+    - run command: `npm run db:push:prod`
+   - `DATABASE_URL` bound on the job component itself
+   - `DATABASE_CA_CERT` bound on the job component itself
 6. Confirm the health check path is `/api/health`.
+
+If the `schema-sync` deploy log ever says Prisma is trying to reach `localhost:5432`, that means the job component is missing `DATABASE_URL` at runtime and is not actually bound to the managed database yet.
 
 ### Add the custom domain
 
