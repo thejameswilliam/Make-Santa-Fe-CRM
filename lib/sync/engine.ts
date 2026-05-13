@@ -12,12 +12,20 @@ import {
   createContactWithPrimaryEmail,
   findContactIdByNormalizedEmail,
   getMappingRulesBySource,
+  persistContactCertifications,
   persistExternalIdentities,
   persistProfileValues,
   upsertUnmatchedEvent
 } from "@/lib/crm";
 import { config } from "@/lib/config";
-import { LANE_META, SOURCE_LABELS, SOURCE_SYSTEMS, type LaneKey, type SourceSystemKey } from "@/lib/constants";
+import {
+  AUTO_BACKGROUND_REFRESH_SOURCES,
+  LANE_META,
+  SOURCE_LABELS,
+  SOURCE_SYSTEMS,
+  type LaneKey,
+  type SourceSystemKey
+} from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { classifyWordPressEvent } from "@/lib/sync/classify";
 import {
@@ -89,6 +97,7 @@ function assertDatabase() {
 
 const ACTIVE_SYNC_SOURCES = SOURCE_SYSTEMS.filter((source) => source !== "MANUAL");
 const SYNC_PAGE_SIZE = config.wordpressSyncPageSize;
+const incrementalSyncInFlight = new Map<SourceSystemKey, Promise<SyncSourceProgressSnapshot>>();
 
 function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -401,7 +410,7 @@ export async function ensureFreshData(source?: SourceSystemKey) {
   await ensureCatalogSeeded();
 
   const db = assertDatabase();
-  const targets = source ? [source] : ACTIVE_SYNC_SOURCES;
+  const targets = source ? [source] : [...AUTO_BACKGROUND_REFRESH_SOURCES];
   const states = await db.sourceSyncState.findMany({
     where: {
       source: {
@@ -410,17 +419,22 @@ export async function ensureFreshData(source?: SourceSystemKey) {
     }
   });
 
-  const staleSources = states
-    .filter((state) => !state.lastSuccessfulSyncAt || Date.now() - state.lastSuccessfulSyncAt.getTime() > config.syncFreshnessMs)
-    .map((state) => state.source as SourceSystemKey);
+  const stateBySource = new Map(states.map((state) => [state.source as SourceSystemKey, state]));
+  const staleSources = targets.filter((target) => {
+    const state = stateBySource.get(target);
+    return !state?.lastSuccessfulSyncAt || Date.now() - state.lastSuccessfulSyncAt.getTime() > config.syncFreshnessMs;
+  });
 
-  for (const staleSource of staleSources) {
-    await syncSource(staleSource, "INCREMENTAL");
+  const nextStaleSource = staleSources[0];
+  if (!nextStaleSource) {
+    return { refreshed: false, sources: [] as SourceSystemKey[] };
   }
 
+  await runIncrementalSyncSingleFlight(nextStaleSource);
+
   return {
-    refreshed: staleSources.length > 0,
-    sources: staleSources
+    refreshed: true,
+    sources: [nextStaleSource]
   };
 }
 
@@ -508,6 +522,20 @@ async function performBackfill(source?: SourceSystemKey, observer?: BackfillObse
 
 export async function runBackfill(source?: SourceSystemKey) {
   return performBackfill(source);
+}
+
+function runIncrementalSyncSingleFlight(source: SourceSystemKey) {
+  const inFlight = incrementalSyncInFlight.get(source);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const syncPromise = syncSource(source, "INCREMENTAL").finally(() => {
+    incrementalSyncInFlight.delete(source);
+  });
+
+  incrementalSyncInFlight.set(source, syncPromise);
+  return syncPromise;
 }
 
 export async function syncSource(
@@ -856,6 +884,15 @@ async function ingestSourceEvent(input: {
         profile: input.event.profile,
         occurredAt: new Date(input.event.occurredAt)
       });
+
+      if (Array.isArray(input.event.profile.certifications)) {
+        await persistContactCertifications(tx, {
+          contactId,
+          source: input.source as PrismaSourceSystem,
+          certifications: input.event.profile.certifications,
+          observedAt: new Date(input.event.occurredAt)
+        });
+      }
     }
 
     if ((input.event.identities?.length ?? 0) > 0) {

@@ -17,6 +17,7 @@ import {
   DEFAULT_MAPPING_RULES,
   findReviewEventType,
   findReviewEventTypeByKey,
+  isAutoBackgroundRefreshSource,
   type ContactEffectiveRoleTagKey,
   type ContactManualRoleTagKey,
   LANE_META,
@@ -36,6 +37,7 @@ import {
 } from "@/lib/demo-data";
 import { buildCanonicalProfileFields } from "@/lib/profile";
 import type {
+  ContactCertification,
   ContactDetail,
   ContactNote,
   ContactListItem,
@@ -46,6 +48,7 @@ import type {
   ReviewQueueItem,
   SessionUser,
   TimelineEntry,
+  WordPressCertificationPayload,
   WordPressIdentityPayload,
   WordPressProfilePayload,
   WordPressSourceEvent
@@ -107,6 +110,10 @@ function isStale(dateValue?: Date | null) {
   }
 
   return Date.now() - dateValue.getTime() > config.syncFreshnessMs;
+}
+
+function isAutoRefreshStale(source: SourceSystemKey, dateValue?: Date | null) {
+  return isAutoBackgroundRefreshSource(source) && isStale(dateValue);
 }
 
 function sourceLabel(source: SourceSystemKey) {
@@ -232,6 +239,15 @@ async function importUnmatchedEventToContact(
       profile: payloadProfile,
       occurredAt: unmatched.occurredAt
     });
+
+    if (Array.isArray(payloadProfile.certifications)) {
+      await persistContactCertifications(tx, {
+        contactId,
+        source: unmatched.source,
+        certifications: payloadProfile.certifications,
+        observedAt: unmatched.occurredAt
+      });
+    }
   }
 
   if (payloadIdentities.length > 0) {
@@ -535,6 +551,76 @@ function hasRecentNonEmailInteraction(
 
     return new Date(interaction.occurredAt).getTime() >= activeSince;
   });
+}
+
+function certificationStatusSortPriority(statusKey?: string | null) {
+  switch ((statusKey ?? "").toLowerCase()) {
+    case "active":
+      return 0;
+    case "expiring":
+      return 1;
+    case "no_expiration":
+      return 2;
+    case "unknown":
+      return 3;
+    case "expired":
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+function mapContactCertifications(
+  certifications: Array<{
+    certificationId: string;
+    source: PrismaSourceSystem;
+    name: string;
+    statusKey: string | null;
+    statusLabel: string | null;
+    lastUsedAt: Date | null;
+    lastUsedLabel: string | null;
+    expiresAt: Date | null;
+    expiresLabel: string | null;
+    detail: string | null;
+    imageUrl: string | null;
+    observedAt: Date;
+  }>
+): ContactCertification[] {
+  return [...certifications]
+    .sort((left, right) => {
+      const priorityDifference =
+        certificationStatusSortPriority(left.statusKey) - certificationStatusSortPriority(right.statusKey);
+      if (priorityDifference !== 0) {
+        return priorityDifference;
+      }
+
+      const expiryDifference =
+        (left.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY) -
+        (right.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY);
+      if (expiryDifference !== 0) {
+        return expiryDifference;
+      }
+
+      const observedDifference = right.observedAt.getTime() - left.observedAt.getTime();
+      if (observedDifference !== 0) {
+        return observedDifference;
+      }
+
+      return left.name.localeCompare(right.name);
+    })
+    .map((certification) => ({
+      id: certification.certificationId,
+      name: certification.name,
+      source: certification.source as SourceSystemKey,
+      statusKey: certification.statusKey,
+      statusLabel: certification.statusLabel,
+      lastUsedAt: certification.lastUsedAt?.toISOString() ?? null,
+      lastUsedLabel: certification.lastUsedLabel,
+      expiresAt: certification.expiresAt?.toISOString() ?? null,
+      expiresLabel: certification.expiresLabel,
+      detail: certification.detail,
+      imageUrl: certification.imageUrl
+    }));
 }
 
 async function getActiveContactIds(db: ReturnType<typeof assertDatabase> | Prisma.TransactionClient, contactIds: string[]) {
@@ -1505,7 +1591,9 @@ export async function getDashboardData(
     availableRoleTags: getAvailableRoleTags(),
     taggedContacts,
     syncStatus,
-    needsBackgroundRefresh: syncStatus.some((entry) => entry.stale)
+    needsBackgroundRefresh: syncStates.some((state) =>
+      isAutoRefreshStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
+    )
   };
 }
 
@@ -1812,6 +1900,7 @@ export async function getContactDetail(contactId: string): Promise<ContactDetail
     include: {
       emails: true,
       profileValues: true,
+      certifications: true,
       timelineEvents: {
         orderBy: { occurredAt: "desc" }
       },
@@ -1934,6 +2023,7 @@ export async function getContactDetail(contactId: string): Promise<ContactDetail
         observedAt: value.observedAt.toISOString()
       }))
     ),
+    certifications: mapContactCertifications(contact.certifications),
     notes,
     metricSections,
     timeline: timelineEntries,
@@ -1952,7 +2042,9 @@ export async function getContactDetail(contactId: string): Promise<ContactDetail
 
       return left.name.localeCompare(right.name);
     }),
-    needsBackgroundRefresh: syncStates.some((state) => isStale(state.lastSuccessfulSyncAt))
+    needsBackgroundRefresh: syncStates.some((state) =>
+      isAutoRefreshStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
+    )
   };
 }
 
@@ -2887,6 +2979,102 @@ export async function persistProfileValues(
       }
     });
   }
+}
+
+export async function persistContactCertifications(
+  tx: Prisma.TransactionClient,
+  input: {
+    contactId: string;
+    source: PrismaSourceSystem;
+    certifications: WordPressCertificationPayload[];
+    observedAt: Date;
+  }
+) {
+  const entries = input.certifications
+    .map((certification) => {
+      const certificationId = certification.id?.trim();
+      const name = certification.name?.trim();
+
+      if (!certificationId || !name) {
+        return null;
+      }
+
+      const lastUsedAt = certification.lastUsedAt ? new Date(certification.lastUsedAt) : null;
+      const expiresAt = certification.expiresAt ? new Date(certification.expiresAt) : null;
+
+      return {
+        certificationId,
+        name,
+        statusKey: certification.statusKey?.trim() || null,
+        statusLabel: certification.statusLabel?.trim() || null,
+        lastUsedAt: lastUsedAt && !Number.isNaN(lastUsedAt.getTime()) ? lastUsedAt : null,
+        lastUsedLabel: certification.lastUsedLabel?.trim() || null,
+        expiresAt: expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt : null,
+        expiresLabel: certification.expiresLabel?.trim() || null,
+        detail: certification.detail?.trim() || null,
+        imageUrl: certification.imageUrl?.trim() || null
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+  const nextIds = entries.map((entry) => entry.certificationId);
+
+  if (nextIds.length === 0) {
+    await tx.contactCertification.deleteMany({
+      where: {
+        contactId: input.contactId
+      }
+    });
+    return;
+  }
+
+  for (const entry of entries) {
+    await tx.contactCertification.upsert({
+      where: {
+        contactId_certificationId: {
+          contactId: input.contactId,
+          certificationId: entry.certificationId
+        }
+      },
+      update: {
+        source: input.source,
+        name: entry.name,
+        statusKey: entry.statusKey,
+        statusLabel: entry.statusLabel,
+        lastUsedAt: entry.lastUsedAt,
+        lastUsedLabel: entry.lastUsedLabel,
+        expiresAt: entry.expiresAt,
+        expiresLabel: entry.expiresLabel,
+        detail: entry.detail,
+        imageUrl: entry.imageUrl,
+        observedAt: input.observedAt
+      },
+      create: {
+        contactId: input.contactId,
+        certificationId: entry.certificationId,
+        source: input.source,
+        name: entry.name,
+        statusKey: entry.statusKey,
+        statusLabel: entry.statusLabel,
+        lastUsedAt: entry.lastUsedAt,
+        lastUsedLabel: entry.lastUsedLabel,
+        expiresAt: entry.expiresAt,
+        expiresLabel: entry.expiresLabel,
+        detail: entry.detail,
+        imageUrl: entry.imageUrl,
+        observedAt: input.observedAt
+      }
+    });
+  }
+
+  await tx.contactCertification.deleteMany({
+    where: {
+      contactId: input.contactId,
+      certificationId: {
+        notIn: nextIds
+      }
+    }
+  });
 }
 
 export async function persistExternalIdentities(

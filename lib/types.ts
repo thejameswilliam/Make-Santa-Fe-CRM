@@ -96,6 +96,20 @@ export interface ContactNote {
   content: string;
 }
 
+export interface ContactCertification {
+  id: string;
+  name: string;
+  source: SourceSystemKey;
+  statusKey: string | null;
+  statusLabel: string | null;
+  lastUsedAt: string | null;
+  lastUsedLabel: string | null;
+  expiresAt: string | null;
+  expiresLabel: string | null;
+  detail: string | null;
+  imageUrl: string | null;
+}
+
 export interface TimelineEntry {
   id: string;
   recordType: TimelineEntryRecordType;
@@ -123,6 +137,7 @@ export interface ContactDetail {
   effectiveRoleTags: ContactEffectiveRoleTagKey[];
   emails: string[];
   profileFields: ContactProfileField[];
+  certifications: ContactCertification[];
   notes: ContactNote[];
   metricSections: MetricSection[];
   timeline: TimelineEntry[];
@@ -207,6 +222,20 @@ export interface WordPressProfilePayload {
   phone?: string | null;
   address?: string | null;
   photoUrl?: string | null;
+  certifications?: WordPressCertificationPayload[] | null;
+}
+
+export interface WordPressCertificationPayload {
+  id: string;
+  name: string;
+  statusKey?: string | null;
+  statusLabel?: string | null;
+  lastUsedAt?: string | null;
+  lastUsedLabel?: string | null;
+  expiresAt?: string | null;
+  expiresLabel?: string | null;
+  detail?: string | null;
+  imageUrl?: string | null;
 }
 
 export interface WordPressIdentityPayload {

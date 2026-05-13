@@ -16,6 +16,19 @@ import { SOURCE_LABELS } from "@/lib/constants";
 import { getRuntimeIssue } from "@/lib/runtime-issues";
 import { formatDateTime, formatPhoneNumber } from "@/lib/utils";
 
+function certificationStatusClass(statusKey?: string | null) {
+  switch ((statusKey ?? "").toLowerCase()) {
+    case "active":
+      return "status-pill-active";
+    case "expiring":
+      return "status-pill-warn";
+    case "expired":
+      return "status-pill-inactive";
+    default:
+      return "status-pill-neutral";
+  }
+}
+
 export default async function ContactPage({
   params
 }: {
@@ -106,6 +119,56 @@ export default async function ContactPage({
             </div>
           </div>
         </section>
+
+        {detail.certifications.length > 0 ? (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <span className="eyebrow">Access</span>
+                <h2 className="section-title">Badges & certifications</h2>
+              </div>
+            </div>
+
+            <div className="certification-grid">
+              {detail.certifications.map((certification) => (
+                <article className="certification-card" key={certification.id}>
+                  <div className="row-between certification-card-header">
+                    <div className="certification-card-title-wrap">
+                      {certification.imageUrl ? (
+                        <img
+                          alt={certification.name}
+                          className="certification-card-image"
+                          loading="lazy"
+                          src={certification.imageUrl}
+                        />
+                      ) : null}
+                      <strong className="certification-card-title">{certification.name}</strong>
+                    </div>
+
+                    {certification.statusLabel ? (
+                      <span className={`status-pill ${certificationStatusClass(certification.statusKey)}`}>
+                        {certification.statusLabel}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="certification-card-meta">
+                    {certification.expiresLabel ? (
+                      <span>Expires: {certification.expiresLabel}</span>
+                    ) : null}
+                    {certification.lastUsedLabel ? (
+                      <span>{certification.lastUsedLabel}</span>
+                    ) : null}
+                  </div>
+
+                  {certification.detail ? (
+                    <p className="muted certification-card-detail">{certification.detail}</p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="record-metrics-stack">
           {detail.metricSections.map((section) => (

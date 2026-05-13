@@ -233,6 +233,18 @@ textarea::placeholder {
   color: rgba(210, 216, 226, 0.82);
 }
 
+.status-pill-warn {
+  border-color: rgba(255, 175, 79, 0.32);
+  background: rgba(255, 175, 79, 0.12);
+  color: rgba(255, 245, 227, 0.96);
+}
+
+.status-pill-neutral {
+  border-color: rgba(144, 161, 188, 0.24);
+  background: rgba(109, 121, 145, 0.12);
+  color: rgba(226, 231, 239, 0.88);
+}
+
 .page-grid {
   display: grid;
   gap: 22px;
@@ -534,6 +546,58 @@ textarea::placeholder {
   align-items: flex-end;
 }
 
+.certification-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.certification-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.022);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.certification-card-header {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.certification-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.certification-card-image {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.certification-card-title {
+  line-height: 1.2;
+}
+
+.certification-card-meta {
+  display: grid;
+  gap: 4px;
+  font-size: 0.76rem;
+  color: rgba(221, 227, 236, 0.78);
+}
+
+.certification-card-detail {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
 .favorite-toggle-wrap {
   display: grid;
   justify-items: end;
@@ -695,7 +759,7 @@ textarea::placeholder {
 .role-filter-pill.is-active {
   border-color: var(--role-tag-color, rgba(255, 77, 77, 0.46));
   background: color-mix(in srgb, var(--role-tag-color, rgba(255, 77, 77, 0.14)) 16%, rgba(255, 255, 255, 0.03));
-  color: var(--role-tag-text, #fffafa);
+  color: #fff;
   box-shadow: var(--glow-soft);
 }
 
@@ -716,7 +780,7 @@ textarea::placeholder {
 .role-tag-button.is-active {
   border-color: var(--role-tag-color, rgba(255, 77, 77, 0.46));
   background: color-mix(in srgb, var(--role-tag-color, rgba(255, 77, 77, 0.14)) 16%, rgba(255, 255, 255, 0.03));
-  color: var(--role-tag-text, #fffafa);
+  color: #fff;
   box-shadow: var(--glow-soft);
 }
 
@@ -1340,10 +1404,41 @@ textarea::placeholder {
   overflow-x: auto;
 }
 
+.timeline-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.timeline-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(237, 240, 245, 0.86);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.timeline-filter-pill:hover,
+.timeline-filter-pill.is-active {
+  border-color: color-mix(in srgb, var(--lane-color, rgba(255, 77, 77, 0.42)) 42%, transparent);
+  background: color-mix(in srgb, var(--lane-color, rgba(255, 77, 77, 0.18)) 18%, rgba(255, 255, 255, 0.03));
+  color: #fff;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--lane-color, rgba(255, 77, 77, 0.16)) 18%, transparent);
+}
+
 .timeline-scale {
   display: grid;
   gap: 18px;
-  min-width: 1040px;
+  width: 100%;
+  min-width: min(1040px, 100%);
 }
 
 .timeline-scale-body {

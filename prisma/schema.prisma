@@ -76,6 +76,7 @@ model Contact {
   emails            ContactEmail[]        @relation("ContactEmails")
   externalIds       ExternalIdentity[]
   profileValues     ContactProfileValue[]
+  certifications    ContactCertification[]
   timelineEvents    TimelineEvent[]
   manualInteractions ManualInteraction[]
   assignedUnmatched UnmatchedEvent[]      @relation("AssignedContact")
@@ -129,6 +130,29 @@ model ContactProfileValue {
 
   @@unique([contactId, fieldKey, source])
   @@index([contactId, fieldKey])
+}
+
+model ContactCertification {
+  id              String       @id @default(cuid())
+  contactId       String
+  certificationId String
+  source          SourceSystem
+  name            String
+  statusKey       String?
+  statusLabel     String?
+  lastUsedAt      DateTime?
+  lastUsedLabel   String?
+  expiresAt       DateTime?
+  expiresLabel    String?
+  detail          String?
+  imageUrl        String?
+  observedAt      DateTime
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  contact         Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, certificationId])
+  @@index([contactId, observedAt])
 }
 
 model TimelineEvent {

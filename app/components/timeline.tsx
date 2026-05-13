@@ -38,6 +38,11 @@ function buildLaneLabelOffsets(height: number) {
   return offsets;
 }
 
+function collectLaneKeys(entries: TimelineEntry[]) {
+  const seen = new Set(entries.map((entry) => entry.laneKey));
+  return (Object.keys(LANE_META) as LaneKey[]).filter((laneKey) => seen.has(laneKey));
+}
+
 export function Timeline({
   entries,
   editable = false,
@@ -45,6 +50,7 @@ export function Timeline({
 }: TimelineProps) {
   const [hoveredEntryId, setHoveredEntryId] = useState<string | null>(null);
   const [localEntries, setLocalEntries] = useState(entries);
+  const [selectedLaneKeys, setSelectedLaneKeys] = useState<LaneKey[]>(collectLaneKeys(entries));
   const [savingEntryId, setSavingEntryId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -52,12 +58,48 @@ export function Timeline({
     setLocalEntries(entries);
   }, [entries]);
 
+  const availableLaneKeys = collectLaneKeys(localEntries);
+  const availableLaneSignature = availableLaneKeys.join("|");
+
+  useEffect(() => {
+    setSelectedLaneKeys((current) => {
+      const preserved = current.filter((laneKey) => availableLaneKeys.includes(laneKey));
+
+      if (preserved.length > 0) {
+        return preserved;
+      }
+
+      return availableLaneKeys;
+    });
+  }, [availableLaneSignature]);
+
   if (localEntries.length === 0) {
     return <div className="empty-state">No timeline events yet. Imported interactions and manual notes will appear here.</div>;
   }
 
-  const layout = buildTimelineLayout(localEntries);
+  const filteredEntries = localEntries.filter((entry) => selectedLaneKeys.includes(entry.laneKey));
+  const layout = buildTimelineLayout(filteredEntries);
   const laneLabelOffsets = buildLaneLabelOffsets(layout.height);
+
+  function showAllLanes() {
+    setSelectedLaneKeys(availableLaneKeys);
+  }
+
+  function toggleLane(laneKey: LaneKey) {
+    setSelectedLaneKeys((current) => {
+      if (current.includes(laneKey)) {
+        if (current.length === 1) {
+          return current;
+        }
+
+        return current.filter((value) => value !== laneKey);
+      }
+
+      return collectLaneKeys(
+        localEntries.filter((entry) => current.includes(entry.laneKey) || entry.laneKey === laneKey)
+      );
+    });
+  }
 
   async function readErrorMessage(response: Response, fallback: string) {
     try {
@@ -212,181 +254,217 @@ export function Timeline({
     <div className="timeline-wrap">
       {saveError ? <div className="inline-alert inline-alert-error">{saveError}</div> : null}
 
-      <div className="timeline-scale">
-        <div className="timeline-scale-body" style={{ height: `${layout.height}px` }}>
-          <div className="timeline-scale-axis">
-            {layout.ticks.map((tick) => (
-              <div className="timeline-scale-tick" key={`${tick.label}-${tick.y}`} style={{ top: `${tick.y}px` }}>
-                <span className="timeline-scale-tick-label">{tick.label}</span>
-              </div>
-            ))}
-          </div>
+      <div className="timeline-filter-bar">
+        <button
+          className={`timeline-filter-pill${selectedLaneKeys.length === availableLaneKeys.length ? " is-active" : ""}`}
+          onClick={showAllLanes}
+          type="button"
+        >
+          All lanes
+        </button>
 
-          <div className="timeline-scale-main">
-            <div className="timeline-scale-lanes" style={{ ["--lane-count" as string]: String(layout.lanes.length) }}>
-              {layout.lanes.map((laneKey) => {
-                const lane = LANE_META[laneKey];
-                const laneItems = layout.items.filter((item) => item.entry.laneKey === laneKey);
-                const laneSegments = layout.laneSegments.filter((segment) => segment.laneKey === laneKey);
+        {availableLaneKeys.map((laneKey) => {
+          const lane = LANE_META[laneKey];
+          const active = selectedLaneKeys.includes(laneKey);
 
-                return (
-                  <div className="timeline-scale-lane-column" key={laneKey}>
-                    {laneLabelOffsets.map((offset, index) => (
-                      <span
-                        className="timeline-lane-inline-label"
-                        key={`${laneKey}-inline-label-${index}`}
-                        style={{
-                          top: `${offset}px`,
-                          ["--lane-color" as string]: lane.color,
-                          ["--lane-text-color" as string]: lane.textColor
-                        }}
-                      >
-                        {lane.label}
-                      </span>
-                    ))}
+          return (
+            <button
+              className={`timeline-filter-pill${active ? " is-active" : ""}`}
+              key={laneKey}
+              onClick={() => toggleLane(laneKey)}
+              style={{
+                ["--lane-color" as string]: lane.color,
+                ["--lane-text-color" as string]: lane.textColor
+              }}
+              type="button"
+            >
+              {lane.label}
+            </button>
+          );
+        })}
+      </div>
 
-                    {layout.ticks.map((tick) => (
-                      <span className="timeline-scale-guide" key={`${laneKey}-${tick.label}-${tick.y}`} style={{ top: `${tick.y}px` }} />
-                    ))}
+      {filteredEntries.length === 0 ? (
+        <div className="empty-state">No timeline events match the selected lanes.</div>
+      ) : null}
 
-                    <span className="timeline-scale-lane-track" />
-
-                    {laneSegments.map((segment, index) => (
-                      <span
-                        className="timeline-scale-segment"
-                        key={`${laneKey}-segment-${index}`}
-                        style={{
-                          top: `${segment.top}px`,
-                          height: `${segment.height}px`,
-                          background: lane.color,
-                          color: lane.color
-                        }}
-                      />
-                    ))}
-
-                    {laneItems.map((item) => (
-                      <span
-                        className={`timeline-node timeline-node-scale${hoveredEntryId === item.entry.id ? " is-active" : ""}`}
-                        key={item.entry.id}
-                        onMouseEnter={() => setHoveredEntryId(item.entry.id)}
-                        onMouseLeave={() => setHoveredEntryId((current) => (current === item.entry.id ? null : current))}
-                        aria-hidden="true"
-                        style={{
-                          top: `${item.y}px`,
-                          background: lane.color,
-                          ["--lane-color" as string]: lane.color
-                        }}
-                      />
-                    ))}
-                  </div>
-                );
-              })}
+      {filteredEntries.length > 0 ? (
+        <div className="timeline-scale">
+          <div className="timeline-scale-body" style={{ height: `${layout.height}px` }}>
+            <div className="timeline-scale-axis">
+              {layout.ticks.map((tick) => (
+                <div className="timeline-scale-tick" key={`${tick.label}-${tick.y}`} style={{ top: `${tick.y}px` }}>
+                  <span className="timeline-scale-tick-label">{tick.label}</span>
+                </div>
+              ))}
             </div>
 
-            <div className="timeline-scale-cards">
-              {layout.items.map((item) => {
-                const lane = LANE_META[item.entry.laneKey];
-                const laneIndex = layout.lanes.indexOf(item.entry.laneKey);
-                const laneCenterPercent = ((laneIndex + 0.5) / Math.max(layout.lanes.length, 1)) * 50;
+            <div className="timeline-scale-main">
+              <div className="timeline-scale-lanes" style={{ ["--lane-count" as string]: String(layout.lanes.length) }}>
+                {layout.lanes.map((laneKey) => {
+                  const lane = LANE_META[laneKey];
+                  const laneItems = layout.items.filter((item) => item.entry.laneKey === laneKey);
+                  const laneSegments = layout.laneSegments.filter((segment) => segment.laneKey === laneKey);
 
-                return (
-                  <article
-                    className={`timeline-scale-entry${hoveredEntryId === item.entry.id ? " is-active" : ""}`}
-                    key={item.entry.id}
-                    onMouseEnter={() => setHoveredEntryId(item.entry.id)}
-                    onMouseLeave={() => setHoveredEntryId((current) => (current === item.entry.id ? null : current))}
-                    style={{
-                      top: `${item.y}px`,
-                      ["--lane-color" as string]: lane.color,
-                      ["--lane-text-color" as string]: lane.textColor,
-                      ["--lane-center-percent" as string]: String(laneCenterPercent),
-                      ["--card-start-percent" as string]: "56"
-                    }}
-                  >
-                    <span className={`timeline-card-connector${hoveredEntryId === item.entry.id ? " is-active" : ""}`} aria-hidden="true" />
-                    <div className="timeline-card">
-                      <div className="stack-tight timeline-card-stack">
-                        <div className="row-between timeline-card-heading">
-                          <span className="timeline-card-stamp">{formatDateTime(item.entry.occurredAt)}</span>
-                          {item.entry.amountLabel ? <span className="timeline-amount">{item.entry.amountLabel}</span> : null}
-                        </div>
+                  return (
+                    <div className="timeline-scale-lane-column" key={laneKey}>
+                      {laneLabelOffsets.map((offset, index) => (
+                        <span
+                          className="timeline-lane-inline-label"
+                          key={`${laneKey}-inline-label-${index}`}
+                          style={{
+                            top: `${offset}px`,
+                            ["--lane-color" as string]: lane.color,
+                            ["--lane-text-color" as string]: lane.textColor
+                          }}
+                        >
+                          {lane.label}
+                        </span>
+                      ))}
 
-                        <h4 className="timeline-title">{item.entry.title}</h4>
+                      {layout.ticks.map((tick) => (
+                        <span className="timeline-scale-guide" key={`${laneKey}-${tick.label}-${tick.y}`} style={{ top: `${tick.y}px` }} />
+                      ))}
 
-                        <div className="timeline-meta">
-                          {editable ? (
-                            item.entry.recordType === "MANUAL" ? (
-                              <label
-                                className="timeline-type-select"
-                                data-saving={savingEntryId === item.entry.id ? "true" : "false"}
-                              >
-                                <select
-                                  aria-label={`Interaction type for ${item.entry.title}`}
-                                  disabled={
-                                    savingEntryId === item.entry.id ||
-                                    manualInteractionTypeOptions.length === 0
-                                  }
-                                  onChange={(event) =>
-                                    void updateManualClassification(item.entry.id, event.target.value)
-                                  }
-                                  value={item.entry.manualInteractionTypeId ?? ""}
-                                >
-                                  {manualInteractionTypeOptions.map((option) => (
-                                    <option key={option.id} value={option.id}>
-                                      {option.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            ) : (
-                              <label
-                                className="timeline-type-select"
-                                data-saving={savingEntryId === item.entry.id ? "true" : "false"}
-                              >
-                                <select
-                                  aria-label={`Interaction type for ${item.entry.title}`}
-                                  disabled={savingEntryId === item.entry.id}
-                                  onChange={(event) =>
-                                    void updateImportedClassification(item.entry.id, event.target.value)
-                                  }
-                                  value={findReviewEventType(item.entry.eventKind, item.entry.laneKey)?.key ?? "OTHER"}
-                                >
-                                  {REVIEW_EVENT_TYPES.map((option) => (
-                                    <option key={option.key} value={option.key}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            )
-                          ) : (
-                            <span>{item.entry.typeLabel}</span>
-                          )}
-                          <span className="timeline-meta-source">
-                            {savingEntryId === item.entry.id ? "Saving..." : SOURCE_LABELS[item.entry.source]}
-                          </span>
-                          {item.entry.sourceAdminUrl ? (
-                            <a
-                              className="timeline-source-link"
-                              href={item.entry.sourceAdminUrl}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              {item.entry.sourceAdminLabel ?? "Open source"}
-                            </a>
-                          ) : null}
-                        </div>
-                      </div>
+                      <span className="timeline-scale-lane-track" />
 
-                      {item.entry.summary ? <p className="timeline-summary muted">{item.entry.summary}</p> : null}
+                      {laneSegments.map((segment, index) => (
+                        <span
+                          className="timeline-scale-segment"
+                          key={`${laneKey}-segment-${index}`}
+                          style={{
+                            top: `${segment.top}px`,
+                            height: `${segment.height}px`,
+                            background: lane.color,
+                            color: lane.color
+                          }}
+                        />
+                      ))}
+
+                      {laneItems.map((item) => (
+                        <span
+                          className={`timeline-node timeline-node-scale${hoveredEntryId === item.entry.id ? " is-active" : ""}`}
+                          key={item.entry.id}
+                          onMouseEnter={() => setHoveredEntryId(item.entry.id)}
+                          onMouseLeave={() => setHoveredEntryId((current) => (current === item.entry.id ? null : current))}
+                          aria-hidden="true"
+                          style={{
+                            top: `${item.y}px`,
+                            background: lane.color,
+                            ["--lane-color" as string]: lane.color
+                          }}
+                        />
+                      ))}
                     </div>
-                  </article>
-                );
-              })}
+                  );
+                })}
+              </div>
+
+              <div className="timeline-scale-cards">
+                {layout.items.map((item) => {
+                  const lane = LANE_META[item.entry.laneKey];
+                  const laneIndex = layout.lanes.indexOf(item.entry.laneKey);
+                  const laneCenterPercent = ((laneIndex + 0.5) / Math.max(layout.lanes.length, 1)) * 50;
+
+                  return (
+                    <article
+                      className={`timeline-scale-entry${hoveredEntryId === item.entry.id ? " is-active" : ""}`}
+                      key={item.entry.id}
+                      onMouseEnter={() => setHoveredEntryId(item.entry.id)}
+                      onMouseLeave={() => setHoveredEntryId((current) => (current === item.entry.id ? null : current))}
+                      style={{
+                        top: `${item.y}px`,
+                        ["--lane-color" as string]: lane.color,
+                        ["--lane-text-color" as string]: lane.textColor,
+                        ["--lane-center-percent" as string]: String(laneCenterPercent),
+                        ["--card-start-percent" as string]: "56"
+                      }}
+                    >
+                      <span className={`timeline-card-connector${hoveredEntryId === item.entry.id ? " is-active" : ""}`} aria-hidden="true" />
+                      <div className="timeline-card">
+                        <div className="stack-tight timeline-card-stack">
+                          <div className="row-between timeline-card-heading">
+                            <span className="timeline-card-stamp">{formatDateTime(item.entry.occurredAt)}</span>
+                            {item.entry.amountLabel ? <span className="timeline-amount">{item.entry.amountLabel}</span> : null}
+                          </div>
+
+                          <h4 className="timeline-title">{item.entry.title}</h4>
+
+                          <div className="timeline-meta">
+                            {editable ? (
+                              item.entry.recordType === "MANUAL" ? (
+                                <label
+                                  className="timeline-type-select"
+                                  data-saving={savingEntryId === item.entry.id ? "true" : "false"}
+                                >
+                                  <select
+                                    aria-label={`Interaction type for ${item.entry.title}`}
+                                    disabled={
+                                      savingEntryId === item.entry.id ||
+                                      manualInteractionTypeOptions.length === 0
+                                    }
+                                    onChange={(event) =>
+                                      void updateManualClassification(item.entry.id, event.target.value)
+                                    }
+                                    value={item.entry.manualInteractionTypeId ?? ""}
+                                  >
+                                    {manualInteractionTypeOptions.map((option) => (
+                                      <option key={option.id} value={option.id}>
+                                        {option.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : (
+                                <label
+                                  className="timeline-type-select"
+                                  data-saving={savingEntryId === item.entry.id ? "true" : "false"}
+                                >
+                                  <select
+                                    aria-label={`Interaction type for ${item.entry.title}`}
+                                    disabled={savingEntryId === item.entry.id}
+                                    onChange={(event) =>
+                                      void updateImportedClassification(item.entry.id, event.target.value)
+                                    }
+                                    value={findReviewEventType(item.entry.eventKind, item.entry.laneKey)?.key ?? "OTHER"}
+                                  >
+                                    {REVIEW_EVENT_TYPES.map((option) => (
+                                      <option key={option.key} value={option.key}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )
+                            ) : (
+                              <span>{item.entry.typeLabel}</span>
+                            )}
+                            <span className="timeline-meta-source">
+                              {savingEntryId === item.entry.id ? "Saving..." : SOURCE_LABELS[item.entry.source]}
+                            </span>
+                            {item.entry.sourceAdminUrl ? (
+                              <a
+                                className="timeline-source-link"
+                                href={item.entry.sourceAdminUrl}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                {item.entry.sourceAdminLabel ?? "Open source"}
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {item.entry.summary ? <p className="timeline-summary muted">{item.entry.summary}</p> : null}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

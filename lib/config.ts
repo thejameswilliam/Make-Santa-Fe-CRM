@@ -21,7 +21,7 @@ const envSchema = z.object({
   WORDPRESS_SYNC_RETRY_DELAY_MS: z.coerce.number().int().min(100).default(1500),
   CRM_SESSION_SECRET: z.string().optional(),
   CRM_APP_BASE_URL: z.string().optional(),
-  CRM_SYNC_FRESHNESS_SECONDS: z.coerce.number().default(300),
+  CRM_SYNC_FRESHNESS_SECONDS: z.coerce.number().default(3600),
   ALLOW_DEV_LOGIN: z.enum(["true", "false"]).default("true")
 });
 

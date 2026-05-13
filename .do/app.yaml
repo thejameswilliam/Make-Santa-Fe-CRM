@@ -66,7 +66,7 @@ envs:
     scope: RUN_TIME
     type: GENERAL
   - key: CRM_SYNC_FRESHNESS_SECONDS
-    value: "300"
+    value: "3600"
     scope: RUN_TIME
     type: GENERAL
   - key: DATABASE_URL

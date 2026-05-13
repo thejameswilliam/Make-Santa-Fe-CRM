@@ -1,8 +1,9 @@
 "use client";
 
-import { startTransition, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { useRouter } from "next/navigation";
+const BACKGROUND_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+const BACKGROUND_REFRESH_IDLE_TIMEOUT_MS = 1500;
 
 export function BackgroundRefresh({
   enabled,
@@ -13,53 +14,101 @@ export function BackgroundRefresh({
   source?: string;
   message: string;
 }) {
-  const router = useRouter();
-  const [status, setStatus] = useState<"idle" | "syncing" | "done">("idle");
+  const [status, setStatus] = useState<"idle" | "scheduled" | "syncing" | "done" | "error">("idle");
 
   useEffect(() => {
     if (!enabled) {
+      setStatus("idle");
       return;
     }
 
     const key = `msf-crm-refresh:${source ?? "all"}`;
     const lastRefresh = Number(window.sessionStorage.getItem(key) ?? "0");
-    if (Date.now() - lastRefresh < 30_000) {
+    if (Date.now() - lastRefresh < BACKGROUND_REFRESH_COOLDOWN_MS) {
       return;
     }
 
-    window.sessionStorage.setItem(key, String(Date.now()));
-    setStatus("syncing");
+    let cancelled = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    let idleHandle: number | undefined;
 
-    startTransition(async () => {
-      const response = await fetch("/api/sync", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          mode: "INCREMENTAL",
-          source: source ?? null
-        })
-      });
-
-      if (response.ok) {
-        const payload = (await response.json()) as { refreshed?: boolean };
-        if (payload.refreshed) {
-          router.refresh();
-        }
+    const runRefresh = async () => {
+      if (cancelled) {
+        return;
       }
 
-      setStatus("done");
-    });
-  }, [enabled, router, source]);
+      window.sessionStorage.setItem(key, String(Date.now()));
+      setStatus("syncing");
+
+      try {
+        const response = await fetch("/api/sync", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            mode: "INCREMENTAL",
+            source: source ?? null
+          })
+        });
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setStatus("error");
+          }
+          return;
+        }
+
+        const payload = (await response.json()) as { refreshed?: boolean };
+        if (!cancelled) {
+          setStatus(payload.refreshed ? "done" : "idle");
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus("error");
+        }
+      }
+    };
+
+    setStatus("scheduled");
+
+    if ("requestIdleCallback" in window) {
+      idleHandle = window.requestIdleCallback(() => {
+        void runRefresh();
+      }, { timeout: BACKGROUND_REFRESH_IDLE_TIMEOUT_MS });
+    } else {
+      timeoutHandle = setTimeout(() => {
+        void runRefresh();
+      }, BACKGROUND_REFRESH_IDLE_TIMEOUT_MS);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof idleHandle === "number" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+    };
+  }, [enabled, source]);
 
   if (!enabled) {
     return null;
   }
 
+  let statusMessage = message;
+  if (status === "scheduled") {
+    statusMessage = `${message} Refresh queued.`;
+  } else if (status === "syncing") {
+    statusMessage = `${message} Refreshing one stale source in the background…`;
+  } else if (status === "done") {
+    statusMessage = `${message} Background refresh complete. Updated data will appear on the next page load.`;
+  } else if (status === "error") {
+    statusMessage = `${message} Background refresh could not complete right now.`;
+  }
+
   return (
-    <p className="form-note">
-      {status === "syncing" ? `${message} Refreshing source data in the background…` : message}
-    </p>
+    <p className="form-note">{statusMessage}</p>
   );
 }

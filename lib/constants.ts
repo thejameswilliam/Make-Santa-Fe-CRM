@@ -9,6 +9,17 @@ export const SOURCE_SYSTEMS = [
 
 export type SourceSystemKey = (typeof SOURCE_SYSTEMS)[number];
 
+export const AUTO_BACKGROUND_REFRESH_SOURCES = [
+  "WOOCOMMERCE",
+  "GRAVITY_FORMS",
+  "SIGN_IN",
+  "RESERVATIONS"
+] as const satisfies ReadonlyArray<SourceSystemKey>;
+
+export function isAutoBackgroundRefreshSource(source?: string | null): source is (typeof AUTO_BACKGROUND_REFRESH_SOURCES)[number] {
+  return AUTO_BACKGROUND_REFRESH_SOURCES.includes(source as (typeof AUTO_BACKGROUND_REFRESH_SOURCES)[number]);
+}
+
 export const SOURCE_LABELS: Record<SourceSystemKey, string> = {
   WOOCOMMERCE: "WooCommerce",
   GRAVITY_FORMS: "Gravity Forms",

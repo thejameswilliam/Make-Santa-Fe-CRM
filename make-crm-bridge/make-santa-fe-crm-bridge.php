@@ -965,13 +965,230 @@ class Make_Santa_Fe_CRM_Bridge {
 		return null;
 	}
 
-	private function build_user_profile($user) {
+	private function normalize_certification_ids($values) {
+		if (! is_array($values)) {
+			$values = empty($values) ? array() : array($values);
+		}
+
+		$ids = array();
+		foreach ($values as $value) {
+			$certification_id = 0;
+
+			if ($value instanceof WP_Post) {
+				$certification_id = (int) $value->ID;
+			} elseif (is_array($value)) {
+				if (! empty($value['ID'])) {
+					$certification_id = (int) $value['ID'];
+				} elseif (! empty($value['id'])) {
+					$certification_id = (int) $value['id'];
+				}
+			} else {
+				$certification_id = (int) $value;
+			}
+
+			if ($certification_id > 0) {
+				$ids[ $certification_id ] = $certification_id;
+			}
+		}
+
+		return array_values($ids);
+	}
+
+	private function get_user_certification_ids($user_id) {
+		$user_id = absint($user_id);
+		if (! $user_id) {
+			return array();
+		}
+
+		if (function_exists('get_field')) {
+			$certifications = get_field('certs', 'user_' . $user_id);
+			$ids            = $this->normalize_certification_ids($certifications);
+			if (! empty($ids)) {
+				return $ids;
+			}
+
+			$legacy_ids = $this->normalize_certification_ids(get_field('certifications', 'user_' . $user_id));
+			if (! empty($legacy_ids)) {
+				return $legacy_ids;
+			}
+		}
+
+		$meta_ids = $this->normalize_certification_ids(get_user_meta($user_id, 'certifications', true));
+		if (! empty($meta_ids)) {
+			return $meta_ids;
+		}
+
+		return $this->normalize_certification_ids(get_user_meta($user_id, 'certs', true));
+	}
+
+	private function resolve_certification_image_url($certification_id) {
+		$image = null;
+		if (function_exists('get_field')) {
+			$image = get_field('badge_image', $certification_id);
+		}
+
+		if (! $image) {
+			return null;
+		}
+
+		if (is_array($image)) {
+			if (! empty($image['sizes']) && is_array($image['sizes'])) {
+				if (! empty($image['sizes']['small-square'])) {
+					return esc_url_raw($image['sizes']['small-square']);
+				}
+
+				if (! empty($image['sizes']['thumbnail'])) {
+					return esc_url_raw($image['sizes']['thumbnail']);
+				}
+			}
+
+			if (! empty($image['url']) && is_string($image['url'])) {
+				return esc_url_raw($image['url']);
+			}
+
+			if (! empty($image['ID'])) {
+				$image_url = wp_get_attachment_image_url((int) $image['ID'], 'small-square');
+				if (! $image_url) {
+					$image_url = wp_get_attachment_image_url((int) $image['ID'], 'thumbnail');
+				}
+
+				return $image_url ? esc_url_raw($image_url) : null;
+			}
+		}
+
+		if (is_numeric($image)) {
+			$image_url = wp_get_attachment_image_url((int) $image, 'small-square');
+			if (! $image_url) {
+				$image_url = wp_get_attachment_image_url((int) $image, 'thumbnail');
+			}
+
+			return $image_url ? esc_url_raw($image_url) : null;
+		}
+
+		if (is_string($image) && filter_var($image, FILTER_VALIDATE_URL)) {
+			return esc_url_raw($image);
+		}
+
+		return null;
+	}
+
+	private function certification_time_to_timestamp($value) {
+		if (empty($value)) {
+			return 0;
+		}
+
+		if (is_numeric($value)) {
+			$timestamp = (int) $value;
+			return $timestamp > 0 ? $timestamp : 0;
+		}
+
+		$timestamp = strtotime((string) $value);
+		return false === $timestamp ? 0 : $timestamp;
+	}
+
+	private function build_certification_status($certification_id, $last_time) {
+		$expiration_days = function_exists('get_field') ? (int) get_field('expiration_time', $certification_id) : 0;
+		$last_used_ts    = $this->certification_time_to_timestamp($last_time);
+		$last_used_at    = $last_used_ts ? gmdate('c', $last_used_ts) : null;
+		$last_used_label = $last_used_ts
+			? 'Last use: ' . date_i18n('M j, Y', $last_used_ts)
+			: (! empty($last_time) ? 'Last use: ' . (string) $last_time : 'No last use/renewal recorded');
+
+		if ($expiration_days <= 0) {
+			return array(
+				'statusKey'     => 'no_expiration',
+				'statusLabel'   => 'No Expiration',
+				'lastUsedAt'    => $last_used_at,
+				'lastUsedLabel' => $last_used_label,
+				'expiresAt'     => null,
+				'expiresLabel'  => 'No expiration',
+				'detail'        => $last_used_label,
+			);
+		}
+
+		if (! $last_used_ts) {
+			return array(
+				'statusKey'     => 'unknown',
+				'statusLabel'   => 'Unknown',
+				'lastUsedAt'    => $last_used_at,
+				'lastUsedLabel' => $last_used_label,
+				'expiresAt'     => null,
+				'expiresLabel'  => null,
+				'detail'        => empty($last_time) ? 'No last use/renewal recorded' : 'Unrecognized last use/renewal format',
+			);
+		}
+
+		$now_timestamp = current_time('timestamp');
+		$expires_ts    = $last_used_ts + ($expiration_days * DAY_IN_SECONDS);
+		$expires_at    = gmdate('c', $expires_ts);
+		$expires_label = date_i18n('M j, Y', $expires_ts);
+
+		if ($expires_ts < $now_timestamp) {
+			$days_ago = (int) floor(($now_timestamp - $expires_ts) / DAY_IN_SECONDS);
+			return array(
+				'statusKey'     => 'expired',
+				'statusLabel'   => 'Expired',
+				'lastUsedAt'    => $last_used_at,
+				'lastUsedLabel' => $last_used_label,
+				'expiresAt'     => $expires_at,
+				'expiresLabel'  => $expires_label,
+				'detail'        => 'Expired ' . $days_ago . ' day' . (1 === $days_ago ? '' : 's') . ' ago',
+			);
+		}
+
+		$days_left  = (int) ceil(($expires_ts - $now_timestamp) / DAY_IN_SECONDS);
+		$status_key = $days_left <= 30 ? 'expiring' : 'active';
+
+		return array(
+			'statusKey'     => $status_key,
+			'statusLabel'   => 'expiring' === $status_key ? 'Expiring Soon' : 'Active',
+			'lastUsedAt'    => $last_used_at,
+			'lastUsedLabel' => $last_used_label,
+			'expiresAt'     => $expires_at,
+			'expiresLabel'  => $expires_label,
+			'detail'        => $days_left . ' day' . (1 === $days_left ? '' : 's') . ' remaining',
+		);
+	}
+
+	private function build_user_certifications($user_id) {
+		$user_id            = absint($user_id);
+		$certification_ids  = $this->get_user_certification_ids($user_id);
+		$certifications     = array();
+
+		foreach ($certification_ids as $certification_id) {
+			$certification_post = get_post($certification_id);
+			if (! $certification_post || 'certs' !== $certification_post->post_type) {
+				continue;
+			}
+
+			$last_time = get_user_meta($user_id, $certification_id . '_last_time', true);
+			$status    = $this->build_certification_status($certification_id, $last_time);
+
+			$certifications[] = array(
+				'id'            => (string) $certification_id,
+				'name'          => get_the_title($certification_id) ? get_the_title($certification_id) : ('Badge #' . $certification_id),
+				'statusKey'     => $status['statusKey'],
+				'statusLabel'   => $status['statusLabel'],
+				'lastUsedAt'    => $status['lastUsedAt'],
+				'lastUsedLabel' => $status['lastUsedLabel'],
+				'expiresAt'     => $status['expiresAt'],
+				'expiresLabel'  => $status['expiresLabel'],
+				'detail'        => $status['detail'],
+				'imageUrl'      => $this->resolve_certification_image_url($certification_id),
+			);
+		}
+
+		return $certifications;
+	}
+
+	private function build_user_profile($user, $include_certifications = false) {
 		if (! $user instanceof WP_User) {
 			return array(
-				'fullName' => null,
-				'phone'    => null,
-				'address'  => null,
-				'photoUrl' => null,
+				'fullName'       => null,
+				'phone'          => null,
+				'address'        => null,
+				'photoUrl'       => null,
+				'certifications' => $include_certifications ? array() : null,
 			);
 		}
 
@@ -995,10 +1212,11 @@ class Make_Santa_Fe_CRM_Bridge {
 		);
 
 		return array(
-			'fullName' => $full_name ? $full_name : null,
-			'phone'    => get_user_meta($user->ID, 'billing_phone', true) ? get_user_meta($user->ID, 'billing_phone', true) : null,
-			'address'  => $address ? $address : null,
-			'photoUrl' => $this->resolve_profile_photo_url($user->ID),
+			'fullName'       => $full_name ? $full_name : null,
+			'phone'          => get_user_meta($user->ID, 'billing_phone', true) ? get_user_meta($user->ID, 'billing_phone', true) : null,
+			'address'        => $address ? $address : null,
+			'photoUrl'       => $this->resolve_profile_photo_url($user->ID),
+			'certifications' => $include_certifications ? $this->build_user_certifications($user->ID) : null,
 		);
 	}
 
@@ -2540,7 +2758,7 @@ class Make_Santa_Fe_CRM_Bridge {
 				'eventKind'  => 'sign_in',
 				'laneKey'    => 'SPACE_USE',
 				'roleKey'    => null,
-				'profile'    => $this->build_user_profile($user),
+				'profile'    => $this->build_user_profile($user, true),
 				'identities' => $this->build_user_identities(
 					$user->ID,
 					array(
@@ -2633,7 +2851,7 @@ class Make_Santa_Fe_CRM_Bridge {
 				'eventKind'  => 'volunteer_shift',
 				'laneKey'    => 'VOLUNTEER',
 				'roleKey'    => 'volunteer',
-				'profile'    => $this->build_user_profile($user),
+				'profile'    => $this->build_user_profile($user, true),
 				'identities' => $this->build_user_identities(
 					$user_id,
 					array(
@@ -2730,7 +2948,7 @@ class Make_Santa_Fe_CRM_Bridge {
 				'eventKind'  => 'volunteer_orientation_completed',
 				'laneKey'    => 'VOLUNTEER',
 				'roleKey'    => 'volunteer',
-				'profile'    => $this->build_user_profile($user),
+				'profile'    => $this->build_user_profile($user, true),
 				'identities' => $this->build_user_identities(
 					$user_id,
 					array(

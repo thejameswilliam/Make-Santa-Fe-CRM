@@ -58,9 +58,7 @@ export function ContactCard({
           </div>
 
           <div className="pill-row contact-card-statuses">
-            <span className={`status-pill ${contact.isActive ? "status-pill-active" : "status-pill-inactive"}`}>
-              {contact.isActive ? "Active" : "Inactive"}
-            </span>
+            {!contact.isActive ? <span className="status-pill status-pill-inactive">Inactive</span> : null}
           </div>
         </div>
 

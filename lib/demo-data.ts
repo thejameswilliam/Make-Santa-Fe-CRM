@@ -228,6 +228,34 @@ export const demoContactDetail: ContactDetail = {
       rawValues: [{ source: "WOOCOMMERCE", displayValue: "2870 Trades West Rd, Santa Fe, NM", observedAt: "2026-05-02T20:43:00.000Z" }]
     }
   ],
+  certifications: [
+    {
+      id: "badge-ceramics",
+      name: "Ceramics Studio Badge",
+      source: "SIGN_IN",
+      statusKey: "active",
+      statusLabel: "Active",
+      lastUsedAt: "2026-04-27T19:10:00.000Z",
+      lastUsedLabel: "Last use: Apr 27, 2026",
+      expiresAt: "2026-10-27T19:10:00.000Z",
+      expiresLabel: "Oct 27, 2026",
+      detail: "183 days remaining",
+      imageUrl: null
+    },
+    {
+      id: "badge-laser",
+      name: "Laser Cutter Badge",
+      source: "SIGN_IN",
+      statusKey: "expiring",
+      statusLabel: "Expiring Soon",
+      lastUsedAt: "2025-06-01T18:00:00.000Z",
+      lastUsedLabel: "Last use: Jun 1, 2025",
+      expiresAt: "2026-06-01T18:00:00.000Z",
+      expiresLabel: "Jun 1, 2026",
+      detail: "20 days remaining",
+      imageUrl: null
+    }
+  ],
   notes: [
     {
       id: "note-1",
