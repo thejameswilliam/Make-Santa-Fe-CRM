@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 
 import { buildRequestAppUrl, redirectFromRequest, setSessionCookie } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { upsertCrmUserSession } from "@/lib/crm";
 import { exchangeWordPressCredentials } from "@/lib/wordpress";
 
 export async function POST(request: NextRequest) {
@@ -25,6 +26,12 @@ export async function POST(request: NextRequest) {
             email: "demo@example.org"
           }
         : await exchangeWordPressCredentials(username, applicationPassword);
+
+    try {
+      await upsertCrmUserSession(user);
+    } catch (crmUserError) {
+      console.error("CRM user upsert failed during login", crmUserError);
+    }
 
     const response = redirectFromRequest(request, returnTo);
     setSessionCookie(response, user);

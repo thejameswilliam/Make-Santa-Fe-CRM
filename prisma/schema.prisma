@@ -61,6 +61,13 @@ enum ContactManualRoleTag {
   STAFF
 }
 
+enum CultivationStatus {
+  PROSPECT
+  ACTIVE_DONOR
+  LAPSED
+  STEWARDSHIP
+}
+
 model Contact {
   id                String                @id @default(cuid())
   displayName       String?
@@ -77,6 +84,7 @@ model Contact {
   externalIds       ExternalIdentity[]
   profileValues     ContactProfileValue[]
   certifications    ContactCertification[]
+  cultivation       ContactCultivation?
   timelineEvents    TimelineEvent[]
   manualInteractions ManualInteraction[]
   assignedUnmatched UnmatchedEvent[]      @relation("AssignedContact")
@@ -84,6 +92,20 @@ model Contact {
   mergeAuditsMerged  MergeAudit[]         @relation("MergeAuditMerged")
 
   @@index([mergedIntoId])
+}
+
+model CrmUser {
+  id                String               @id
+  name              String
+  email             String
+  wordpressUserId   Int?                 @unique
+  lastSeenAt        DateTime
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  ownedCultivations ContactCultivation[] @relation("CultivationOwner")
+
+  @@index([name])
+  @@index([email])
 }
 
 model ContactEmail {
@@ -153,6 +175,20 @@ model ContactCertification {
 
   @@unique([contactId, certificationId])
   @@index([contactId, observedAt])
+}
+
+model ContactCultivation {
+  contactId       String           @id
+  ownerUserId     String?
+  status          CultivationStatus @default(PROSPECT)
+  nextFollowUpAt  DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  contact         Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  owner           CrmUser?         @relation("CultivationOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  @@index([ownerUserId, nextFollowUpAt])
+  @@index([status, nextFollowUpAt])
 }
 
 model TimelineEvent {

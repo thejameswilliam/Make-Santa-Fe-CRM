@@ -287,6 +287,24 @@ textarea::placeholder {
   color: rgba(255, 245, 227, 0.96);
 }
 
+.status-pill-critical {
+  border-color: rgba(255, 108, 146, 0.34);
+  background: linear-gradient(180deg, rgba(255, 108, 146, 0.16), rgba(255, 83, 129, 0.1));
+  color: rgba(255, 241, 247, 0.98);
+}
+
+.status-pill-info {
+  border-color: rgba(88, 233, 255, 0.28);
+  background: linear-gradient(180deg, rgba(88, 233, 255, 0.14), rgba(143, 102, 255, 0.08));
+  color: rgba(244, 251, 255, 0.98);
+}
+
+.status-pill-calm {
+  border-color: rgba(124, 144, 196, 0.24);
+  background: rgba(84, 94, 128, 0.18);
+  color: rgba(228, 233, 244, 0.92);
+}
+
 .status-pill-neutral {
   border-color: rgba(120, 131, 176, 0.24);
   background: rgba(98, 108, 145, 0.16);
@@ -1436,6 +1454,141 @@ textarea::placeholder {
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.cultivation-hero {
+  gap: 16px;
+}
+
+.cultivation-hero-copy {
+  max-width: 52rem;
+}
+
+.cultivation-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.cultivation-section {
+  gap: 14px;
+}
+
+.cultivation-queue-list,
+.cultivation-readonly-list {
+  gap: 14px;
+}
+
+.cultivation-row,
+.cultivation-readonly-row {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.032), rgba(255, 255, 255, 0.012));
+  border: 1px solid rgba(117, 127, 174, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.cultivation-row {
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+}
+
+.cultivation-row.is-busy {
+  opacity: 0.74;
+}
+
+.cultivation-row-main,
+.cultivation-readonly-main,
+.cultivation-row-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.cultivation-row-top,
+.cultivation-readonly-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cultivation-row-top-right {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cultivation-link {
+  color: #ffffff;
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+.cultivation-link:hover {
+  color: #a9f6ff;
+  text-shadow: 0 0 18px rgba(88, 233, 255, 0.2);
+}
+
+.cultivation-row-name {
+  font-size: 1.05rem;
+  line-height: 1.15;
+}
+
+.cultivation-row-email {
+  font-family: var(--font-mono);
+  font-size: 0.77rem;
+}
+
+.cultivation-score-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: 1px solid rgba(88, 233, 255, 0.24);
+  background: linear-gradient(180deg, rgba(88, 233, 255, 0.14), rgba(143, 102, 255, 0.08));
+  color: #f5fbff;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: var(--glow-soft);
+}
+
+.cultivation-row-grid,
+.cultivation-readonly-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.cultivation-metric-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.64rem;
+  color: rgba(134, 233, 255, 0.72);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cultivation-indicator-row {
+  gap: 6px;
+}
+
+.cultivation-indicator-pill {
+  background: rgba(255, 255, 255, 0.035);
+  color: #ffffff;
+}
+
+.cultivation-row-controls {
+  grid-template-columns: 1fr;
+}
+
+.cultivation-row-controls .field label {
+  font-size: 0.82rem;
+}
+
+.cultivation-secondary-grid {
+  align-items: start;
+}
+
 .contact-card-timestamp {
   font-size: 0.84rem;
   color: rgba(236, 241, 250, 0.88);
@@ -1991,6 +2144,10 @@ textarea::placeholder {
 
   .review-card-layout,
   .review-card-assign {
+    grid-template-columns: 1fr;
+  }
+
+  .cultivation-row {
     grid-template-columns: 1fr;
   }
 }

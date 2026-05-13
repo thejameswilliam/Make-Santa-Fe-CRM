@@ -1,4 +1,5 @@
 import {
+  CultivationStatus as PrismaCultivationStatus,
   ContactManualRoleTag as PrismaContactManualRoleTag,
   LaneKey as PrismaLaneKey,
   Prisma,
@@ -10,14 +11,17 @@ import {
 import { ensureCatalogSeeded } from "@/lib/catalog";
 import { buildEffectiveRoleTags } from "@/lib/contact-roles";
 import { config } from "@/lib/config";
+import { computeCultivationSignals } from "@/lib/cultivation";
 import {
   CONTACT_EFFECTIVE_ROLE_TAGS,
   CONTACT_MANUAL_ROLE_TAGS,
   CONTACT_ROLE_TAG_META,
+  CULTIVATION_STATUSES,
   DEFAULT_MAPPING_RULES,
   findReviewEventType,
   findReviewEventTypeByKey,
   isAutoBackgroundRefreshSource,
+  type CultivationStatusKey,
   type ContactEffectiveRoleTagKey,
   type ContactManualRoleTagKey,
   LANE_META,
@@ -29,6 +33,7 @@ import {
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import {
+  demoCultivationDashboardData,
   demoContactDetail,
   demoContacts,
   demoDashboardData,
@@ -37,6 +42,8 @@ import {
 } from "@/lib/demo-data";
 import { buildCanonicalProfileFields } from "@/lib/profile";
 import type {
+  CultivationDashboardData,
+  CultivationOwnerOption,
   ContactCertification,
   ContactDetail,
   ContactNote,
@@ -45,9 +52,12 @@ import type {
   DashboardData,
   MappingScreenData,
   MetricSection,
+  PriorityDonorItem,
+  LapsedDonorItem,
   ReviewQueueItem,
   SessionUser,
   TimelineEntry,
+  UpgradeDonorItem,
   WordPressCertificationPayload,
   WordPressIdentityPayload,
   WordPressProfilePayload,
@@ -621,6 +631,323 @@ function mapContactCertifications(
       detail: certification.detail,
       imageUrl: certification.imageUrl
     }));
+}
+
+interface CultivationDonorSummary {
+  contactId: string;
+  displayName: string;
+  primaryEmail: string | null;
+  owner: CultivationOwnerOption | null;
+  status: CultivationStatusKey;
+  nextFollowUpAt: string | null;
+  priorityScore: number;
+  suggestedAskAmountCents: number | null;
+  lastInteractionAt: string | null;
+  lastDonationAt: string | null;
+  lastDonationAmountCents: number | null;
+  daysSinceLastDonation: number | null;
+  urgencyLabel: string;
+  urgencyTone: "critical" | "warn" | "info" | "calm";
+  upgradeScore: number;
+  upgradeIndicators: string[];
+  actionNeeded: boolean;
+}
+
+function buildCultivationOwnerOption(user?: {
+  id: string;
+  name: string;
+  email: string;
+} | null): CultivationOwnerOption | null {
+  if (!user) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email
+  };
+}
+
+function normalizeCultivationStatus(status?: PrismaCultivationStatus | null): CultivationStatusKey {
+  return (status ?? PrismaCultivationStatus.PROSPECT) as CultivationStatusKey;
+}
+
+function compareDatesAscNullable(left?: string | null, right?: string | null) {
+  if (!left && !right) {
+    return 0;
+  }
+
+  if (!left) {
+    return 1;
+  }
+
+  if (!right) {
+    return -1;
+  }
+
+  return new Date(left).getTime() - new Date(right).getTime();
+}
+
+function sortPriorityDonorItems(items: PriorityDonorItem[]) {
+  return [...items].sort((left, right) => {
+    const byScore = right.priorityScore - left.priorityScore;
+    if (byScore !== 0) {
+      return byScore;
+    }
+
+    const byDueDate = compareDatesAscNullable(left.nextFollowUpAt, right.nextFollowUpAt);
+    if (byDueDate !== 0) {
+      return byDueDate;
+    }
+
+    return compareDateValuesDesc(left.lastInteractionAt, right.lastInteractionAt);
+  });
+}
+
+function sortUpgradeDonorItems(items: UpgradeDonorItem[]) {
+  return [...items].sort((left, right) => {
+    const byScore = right.upgradeScore - left.upgradeScore;
+    if (byScore !== 0) {
+      return byScore;
+    }
+
+    return compareDateValuesDesc(left.lastDonationAt, right.lastDonationAt);
+  });
+}
+
+function sortLapsedDonorItems(items: LapsedDonorItem[]) {
+  return [...items].sort((left, right) => {
+    const leftIsLapsed = (left.daysSinceLastDonation ?? 0) >= 365;
+    const rightIsLapsed = (right.daysSinceLastDonation ?? 0) >= 365;
+
+    if (leftIsLapsed !== rightIsLapsed) {
+      return leftIsLapsed ? -1 : 1;
+    }
+
+    const byDaysSinceGift = (right.daysSinceLastDonation ?? 0) - (left.daysSinceLastDonation ?? 0);
+    if (byDaysSinceGift !== 0) {
+      return byDaysSinceGift;
+    }
+
+    return compareDatesAscNullable(left.lastInteractionAt, right.lastInteractionAt);
+  });
+}
+
+async function getCultivationDonorSummaries(
+  db: ReturnType<typeof assertDatabase>,
+  contactIds?: string[]
+): Promise<CultivationDonorSummary[]> {
+  const donorContactIds = await getDonorContactIds(db, contactIds);
+  if (donorContactIds.size === 0) {
+    return [];
+  }
+
+  const donorIds = Array.from(donorContactIds);
+  const [contacts, timelineEvents, manualInteractions] = await Promise.all([
+    db.contact.findMany({
+      where: {
+        mergedIntoId: null,
+        id: {
+          in: donorIds
+        }
+      },
+      select: {
+        id: true,
+        displayName: true,
+        primaryEmailId: true,
+        emails: {
+          select: {
+            id: true,
+            email: true,
+            isPrimary: true
+          }
+        },
+        cultivation: {
+          select: {
+            ownerUserId: true,
+            status: true,
+            nextFollowUpAt: true,
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
+            }
+          }
+        }
+      }
+    }),
+    db.timelineEvent.findMany({
+      where: {
+        contactId: {
+          in: donorIds
+        }
+      },
+      select: {
+        contactId: true,
+        occurredAt: true,
+        laneKey: true,
+        eventKind: true,
+        amountCents: true,
+        metadata: true
+      }
+    }),
+    db.manualInteraction.findMany({
+      where: {
+        contactId: {
+          in: donorIds
+        }
+      },
+      select: {
+        contactId: true,
+        occurredAt: true,
+        laneKey: true,
+        metadata: true,
+        interactionType: {
+          select: {
+            slug: true
+          }
+        }
+      }
+    })
+  ]);
+
+  const importedActivitiesByContactId = new Map<string, Array<{
+    occurredAt: Date;
+    laneKey: LaneKey;
+    eventKind: string;
+    amountCents?: number | null;
+    metadata?: Record<string, unknown> | null;
+  }>>();
+  for (const event of timelineEvents) {
+    const activities = importedActivitiesByContactId.get(event.contactId) ?? [];
+    activities.push({
+      occurredAt: event.occurredAt,
+      laneKey: event.laneKey as LaneKey,
+      eventKind: event.eventKind,
+      amountCents: event.amountCents,
+      metadata: toJsonRecord(event.metadata)
+    });
+    importedActivitiesByContactId.set(event.contactId, activities);
+  }
+
+  const manualActivitiesByContactId = new Map<string, Array<{
+    occurredAt: Date;
+    laneKey: LaneKey;
+    eventKind: string;
+    amountCents?: number | null;
+    metadata?: Record<string, unknown> | null;
+  }>>();
+  for (const interaction of manualInteractions) {
+    const activities = manualActivitiesByContactId.get(interaction.contactId) ?? [];
+    activities.push({
+      occurredAt: interaction.occurredAt,
+      laneKey: interaction.laneKey as LaneKey,
+      eventKind: interaction.interactionType.slug,
+      amountCents:
+        interaction.interactionType.slug === "donation"
+          ? readAmountCentsFromMetadata(interaction.metadata)
+          : null,
+      metadata: toJsonRecord(interaction.metadata)
+    });
+    manualActivitiesByContactId.set(interaction.contactId, activities);
+  }
+
+  return contacts.map((contact) => {
+    const primaryEmail =
+      contact.emails.find((email) => email.id === contact.primaryEmailId) ??
+      contact.emails.find((email) => email.isPrimary) ??
+      contact.emails[0] ??
+      null;
+    const owner = buildCultivationOwnerOption(contact.cultivation?.owner);
+    const status = normalizeCultivationStatus(contact.cultivation?.status);
+    const importedActivities = importedActivitiesByContactId.get(contact.id) ?? [];
+    const manualActivities = manualActivitiesByContactId.get(contact.id) ?? [];
+    const signals = computeCultivationSignals({
+      importedActivities,
+      manualActivities,
+      status,
+      nextFollowUpAt: contact.cultivation?.nextFollowUpAt ?? null,
+      hasOwner: Boolean(owner)
+    });
+
+    return {
+      contactId: contact.id,
+      displayName: contact.displayName ?? primaryEmail?.email ?? "Unnamed donor",
+      primaryEmail: primaryEmail?.email ?? null,
+      owner,
+      status,
+      nextFollowUpAt: contact.cultivation?.nextFollowUpAt?.toISOString() ?? null,
+      priorityScore: signals.priorityScore,
+      suggestedAskAmountCents: signals.suggestedAskAmountCents,
+      lastInteractionAt: signals.lastInteractionAt?.toISOString() ?? null,
+      lastDonationAt: signals.latestDonationAt?.toISOString() ?? null,
+      lastDonationAmountCents: signals.latestGiftCents,
+      daysSinceLastDonation: signals.daysSinceLastDonation,
+      urgencyLabel: signals.urgencyLabel,
+      urgencyTone: signals.urgencyTone,
+      upgradeScore: signals.upgradeScore,
+      upgradeIndicators: signals.upgradeIndicators,
+      actionNeeded: signals.actionNeeded
+    };
+  });
+}
+
+function toPriorityDonorItem(summary: CultivationDonorSummary): PriorityDonorItem {
+  return {
+    contactId: summary.contactId,
+    displayName: summary.displayName,
+    primaryEmail: summary.primaryEmail,
+    owner: summary.owner,
+    status: summary.status,
+    nextFollowUpAt: summary.nextFollowUpAt,
+    priorityScore: summary.priorityScore,
+    suggestedAskAmount: formatCurrency(summary.suggestedAskAmountCents, "USD") ?? "—",
+    suggestedAskAmountCents: summary.suggestedAskAmountCents,
+    lastInteractionAt: summary.lastInteractionAt,
+    lastDonationAt: summary.lastDonationAt,
+    lastDonationAmount: formatCurrency(summary.lastDonationAmountCents, "USD") ?? null,
+    lastDonationAmountCents: summary.lastDonationAmountCents,
+    daysSinceLastDonation: summary.daysSinceLastDonation,
+    urgencyLabel: summary.urgencyLabel,
+    urgencyTone: summary.urgencyTone,
+    upgradeScore: summary.upgradeScore,
+    upgradeIndicators: summary.upgradeIndicators
+  };
+}
+
+function toUpgradeDonorItem(summary: CultivationDonorSummary): UpgradeDonorItem {
+  return {
+    contactId: summary.contactId,
+    displayName: summary.displayName,
+    primaryEmail: summary.primaryEmail,
+    owner: summary.owner,
+    suggestedAskAmount: formatCurrency(summary.suggestedAskAmountCents, "USD") ?? "—",
+    suggestedAskAmountCents: summary.suggestedAskAmountCents,
+    lastDonationAt: summary.lastDonationAt,
+    lastDonationAmount: formatCurrency(summary.lastDonationAmountCents, "USD") ?? null,
+    lastDonationAmountCents: summary.lastDonationAmountCents,
+    upgradeScore: summary.upgradeScore,
+    upgradeIndicators: summary.upgradeIndicators
+  };
+}
+
+function toLapsedDonorItem(summary: CultivationDonorSummary): LapsedDonorItem {
+  return {
+    contactId: summary.contactId,
+    displayName: summary.displayName,
+    primaryEmail: summary.primaryEmail,
+    owner: summary.owner,
+    lastInteractionAt: summary.lastInteractionAt,
+    lastDonationAt: summary.lastDonationAt,
+    lastDonationAmount: formatCurrency(summary.lastDonationAmountCents, "USD") ?? null,
+    lastDonationAmountCents: summary.lastDonationAmountCents,
+    daysSinceLastDonation: summary.daysSinceLastDonation,
+    urgencyLabel: summary.urgencyLabel,
+    urgencyTone: summary.urgencyTone
+  };
 }
 
 async function getActiveContactIds(db: ReturnType<typeof assertDatabase> | Prisma.TransactionClient, contactIds: string[]) {
@@ -1597,6 +1924,68 @@ export async function getDashboardData(
   };
 }
 
+export async function getCultivationDashboardData(): Promise<CultivationDashboardData> {
+  if (!prisma) {
+    return demoCultivationDashboardData;
+  }
+
+  await ensureCatalogSeeded();
+
+  const db = assertDatabase();
+  const [ownerOptions, donorSummaries, syncStates] = await Promise.all([
+    db.crmUser.findMany({
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        email: true
+      }
+    }),
+    getCultivationDonorSummaries(db),
+    db.sourceSyncState.findMany({
+      orderBy: { source: "asc" }
+    })
+  ]);
+
+  const priorityQueue = sortPriorityDonorItems(
+    donorSummaries
+      .filter((summary) => summary.actionNeeded)
+      .map((summary) => toPriorityDonorItem(summary))
+  ).slice(0, 25);
+
+  const upgradeCandidates = sortUpgradeDonorItems(
+    donorSummaries
+      .filter((summary) => {
+        const daysSinceLastDonation = summary.daysSinceLastDonation ?? Number.POSITIVE_INFINITY;
+        return daysSinceLastDonation < 365 && summary.upgradeScore >= 55;
+      })
+      .map((summary) => toUpgradeDonorItem(summary))
+  ).slice(0, 15);
+
+  const lapsedDonors = sortLapsedDonorItems(
+    donorSummaries
+      .filter((summary) => {
+        const daysSinceLastDonation = summary.daysSinceLastDonation ?? -1;
+        return daysSinceLastDonation >= 180;
+      })
+      .map((summary) => toLapsedDonorItem(summary))
+  ).slice(0, 15);
+
+  return {
+    ownerOptions: ownerOptions.map((owner) => ({
+      id: owner.id,
+      name: owner.name,
+      email: owner.email
+    })),
+    priorityQueue,
+    upgradeCandidates,
+    lapsedDonors,
+    needsBackgroundRefresh: syncStates.some((state) =>
+      isAutoRefreshStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
+    )
+  };
+}
+
 export async function getPeople(
   search?: string | null,
   options?: {
@@ -2134,6 +2523,158 @@ export async function setContactManualRoleTag(input: {
       manualRoleTags: updated.manualRoleTags as ContactManualRoleTagKey[],
       hasDonorHistory: donorContactIds.has(input.contactId)
     })
+  };
+}
+
+export async function upsertCrmUserSession(user: SessionUser) {
+  if (!prisma) {
+    return null;
+  }
+
+  const db = assertDatabase();
+
+  return db.crmUser.upsert({
+    where: {
+      id: user.id
+    },
+    create: {
+      id: user.id,
+      name: user.name.trim() || user.email.trim(),
+      email: user.email.trim(),
+      wordpressUserId: user.wordpressUserId ?? null,
+      lastSeenAt: new Date()
+    },
+    update: {
+      name: user.name.trim() || user.email.trim(),
+      email: user.email.trim(),
+      wordpressUserId: user.wordpressUserId ?? null,
+      lastSeenAt: new Date()
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true
+    }
+  });
+}
+
+export async function updateCultivationWorkflow(input: {
+  contactId: string;
+  ownerUserId?: string | null;
+  status?: CultivationStatusKey;
+  nextFollowUpAt?: string | null;
+}) {
+  if (
+    input.ownerUserId === undefined &&
+    input.status === undefined &&
+    input.nextFollowUpAt === undefined
+  ) {
+    throw new Error("At least one cultivation workflow field is required.");
+  }
+
+  if (input.status !== undefined && !CULTIVATION_STATUSES.includes(input.status)) {
+    throw new Error("Cultivation status not found.");
+  }
+
+  const db = assertDatabase();
+  const contact = await db.contact.findUnique({
+    where: { id: input.contactId },
+    select: {
+      id: true,
+      mergedIntoId: true,
+      cultivation: {
+        select: {
+          ownerUserId: true,
+          status: true,
+          nextFollowUpAt: true
+        }
+      }
+    }
+  });
+
+  if (!contact || contact.mergedIntoId) {
+    throw new Error("Contact not found.");
+  }
+
+  const donorContactIds = await getDonorContactIds(db, [input.contactId]);
+  if (!donorContactIds.has(input.contactId)) {
+    throw new Error("Only contacts with donor history can use cultivation workflow.");
+  }
+
+  let nextOwnerUserId = contact.cultivation?.ownerUserId ?? null;
+  if (input.ownerUserId !== undefined) {
+    if (input.ownerUserId === null || input.ownerUserId === "") {
+      nextOwnerUserId = null;
+    } else {
+      const owner = await db.crmUser.findUnique({
+        where: {
+          id: input.ownerUserId
+        },
+        select: {
+          id: true
+        }
+      });
+
+      if (!owner) {
+        throw new Error("Relationship owner not found.");
+      }
+
+      nextOwnerUserId = owner.id;
+    }
+  }
+
+  let nextFollowUpAt = contact.cultivation?.nextFollowUpAt ?? null;
+  if (input.nextFollowUpAt !== undefined) {
+    if (input.nextFollowUpAt === null || input.nextFollowUpAt === "") {
+      nextFollowUpAt = null;
+    } else {
+      const parsedDate = new Date(`${input.nextFollowUpAt}T12:00:00.000Z`);
+      if (Number.isNaN(parsedDate.getTime())) {
+        throw new Error("Next follow-up date is invalid.");
+      }
+
+      nextFollowUpAt = parsedDate;
+    }
+  }
+
+  const nextStatus = input.status ?? normalizeCultivationStatus(contact.cultivation?.status);
+
+  const updated = await db.contactCultivation.upsert({
+    where: {
+      contactId: input.contactId
+    },
+    create: {
+      contactId: input.contactId,
+      ownerUserId: nextOwnerUserId,
+      status: nextStatus as PrismaCultivationStatus,
+      nextFollowUpAt
+    },
+    update: {
+      ownerUserId: nextOwnerUserId,
+      status: nextStatus as PrismaCultivationStatus,
+      nextFollowUpAt
+    },
+    select: {
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      status: true,
+      nextFollowUpAt: true
+    }
+  });
+
+  const updatedSummary = (await getCultivationDonorSummaries(db, [input.contactId]))[0] ?? null;
+
+  return {
+    contactId: input.contactId,
+    owner: buildCultivationOwnerOption(updated.owner),
+    status: updated.status as CultivationStatusKey,
+    nextFollowUpAt: updated.nextFollowUpAt?.toISOString() ?? null,
+    priorityItem: updatedSummary && updatedSummary.actionNeeded ? toPriorityDonorItem(updatedSummary) : null
   };
 }
 

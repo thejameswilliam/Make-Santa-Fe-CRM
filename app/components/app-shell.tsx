@@ -7,6 +7,7 @@ import type { SessionUser } from "@/lib/types";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
+  { href: "/cultivation", label: "Cultivation" },
   { href: "/people", label: "People" },
   { href: "/review-queue", label: "Review Queue" },
   { href: "/mappings", label: "Mappings" },

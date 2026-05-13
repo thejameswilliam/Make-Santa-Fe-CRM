@@ -156,6 +156,32 @@ export default async function ManualPage() {
           </div>
         </section>
       </section>
+
+      <section className="panel">
+        <div>
+          <span className="eyebrow">Cultivation</span>
+          <h2 className="section-title">Donor cultivation dashboard</h2>
+        </div>
+
+        <div className="surface-list">
+          <div className="surface-row">
+            <strong>Priority queue</strong>
+            <p className="muted">The main queue surfaces donors who need attention now because they are unowned, missing a follow-up date, due soon, overdue, lapsed, at-risk, or strong upgrade candidates.</p>
+          </div>
+          <div className="surface-row">
+            <strong>Cultivation statuses</strong>
+            <p className="muted">`Prospect`, `Active donor`, `Lapsed`, and `Stewardship` are manual workflow stages. They help organize fundraising work but do not replace the actual giving history on the record.</p>
+          </div>
+          <div className="surface-row">
+            <strong>Suggested Ask Amount</strong>
+            <p className="muted">The CRM estimates a next ask from largest and average gifts, recent giving, donor engagement, and major donor potential. It rounds to a practical number for outreach planning.</p>
+          </div>
+          <div className="surface-row">
+            <strong>Lapsed / at-risk thresholds</strong>
+            <p className="muted">Donors become `At risk` after 180 days since their last gift and `Lapsed` after 365 days. Long gaps in overall engagement increase urgency.</p>
+          </div>
+        </div>
+      </section>
     </AppShell>
   );
 }

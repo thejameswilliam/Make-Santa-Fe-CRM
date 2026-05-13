@@ -67,6 +67,29 @@ export const CONTACT_EFFECTIVE_ROLE_TAGS = [
 export type ContactManualRoleTagKey = (typeof CONTACT_MANUAL_ROLE_TAGS)[number];
 export type ContactEffectiveRoleTagKey = (typeof CONTACT_EFFECTIVE_ROLE_TAGS)[number];
 
+export const CULTIVATION_STATUSES = [
+  "PROSPECT",
+  "ACTIVE_DONOR",
+  "LAPSED",
+  "STEWARDSHIP"
+] as const;
+
+export type CultivationStatusKey = (typeof CULTIVATION_STATUSES)[number];
+
+export const CULTIVATION_STATUS_META: Record<
+  CultivationStatusKey,
+  {
+    label: string;
+    color: string;
+    textColor: string;
+  }
+> = {
+  PROSPECT: { label: "Prospect", color: "#7e6bff", textColor: "#ffffff" },
+  ACTIVE_DONOR: { label: "Active donor", color: "#36d7b8", textColor: "#ffffff" },
+  LAPSED: { label: "Lapsed", color: "#ff7a66", textColor: "#ffffff" },
+  STEWARDSHIP: { label: "Stewardship", color: "#ff4fd8", textColor: "#ffffff" }
+};
+
 export const CONTACT_ROLE_TAG_META: Record<
   ContactEffectiveRoleTagKey,
   {
@@ -89,6 +112,10 @@ export function isContactManualRoleTagKey(value?: string | null): value is Conta
 
 export function isContactEffectiveRoleTagKey(value?: string | null): value is ContactEffectiveRoleTagKey {
   return CONTACT_EFFECTIVE_ROLE_TAGS.includes(value as ContactEffectiveRoleTagKey);
+}
+
+export function isCultivationStatusKey(value?: string | null): value is CultivationStatusKey {
+  return CULTIVATION_STATUSES.includes(value as CultivationStatusKey);
 }
 
 export const PEOPLE_SORT_OPTIONS = [

@@ -1,5 +1,6 @@
 import { LANE_META, SOURCE_LABELS, type LaneKey } from "@/lib/constants";
 import type {
+  CultivationDashboardData,
   ContactDetail,
   ContactListItem,
   DashboardData,
@@ -168,6 +169,102 @@ export const demoDashboardData: DashboardData = {
     lastSuccessfulSyncAt: new Date(Date.now() - index * 8 * 60 * 1000).toISOString(),
     stale: index < 2
   })),
+  needsBackgroundRefresh: true
+};
+
+export const demoCultivationDashboardData: CultivationDashboardData = {
+  ownerOptions: [
+    {
+      id: "wp-1",
+      name: "James",
+      email: "james@example.org"
+    },
+    {
+      id: "wp-2",
+      name: "Morgan",
+      email: "morgan@example.org"
+    }
+  ],
+  priorityQueue: [
+    {
+      contactId: "contact-1",
+      displayName: "Elena Martinez",
+      primaryEmail: "elena@example.org",
+      owner: {
+        id: "wp-1",
+        name: "James",
+        email: "james@example.org"
+      },
+      status: "ACTIVE_DONOR",
+      nextFollowUpAt: "2026-05-18T12:00:00.000Z",
+      priorityScore: 88,
+      suggestedAskAmount: "$100.00",
+      suggestedAskAmountCents: 10000,
+      lastInteractionAt: timeline[0]?.occurredAt ?? null,
+      lastDonationAt: "2026-04-14T18:30:00.000Z",
+      lastDonationAmount: "$75.00",
+      lastDonationAmountCents: 7500,
+      daysSinceLastDonation: 27,
+      urgencyLabel: "Due soon",
+      urgencyTone: "warn",
+      upgradeScore: 62,
+      upgradeIndicators: ["Increased giving trend", "Strong communication response", "Solid engagement"]
+    },
+    {
+      contactId: "contact-3",
+      displayName: "Nadia Flores",
+      primaryEmail: "nadia@example.org",
+      owner: null,
+      status: "LAPSED",
+      nextFollowUpAt: null,
+      priorityScore: 91,
+      suggestedAskAmount: "$250.00",
+      suggestedAskAmountCents: 25000,
+      lastInteractionAt: "2025-12-10T17:00:00.000Z",
+      lastDonationAt: "2025-04-01T16:00:00.000Z",
+      lastDonationAmount: "$150.00",
+      lastDonationAmountCents: 15000,
+      daysSinceLastDonation: 406,
+      urgencyLabel: "Lapsed",
+      urgencyTone: "critical",
+      upgradeScore: 28,
+      upgradeIndicators: []
+    }
+  ],
+  upgradeCandidates: [
+    {
+      contactId: "contact-1",
+      displayName: "Elena Martinez",
+      primaryEmail: "elena@example.org",
+      owner: {
+        id: "wp-1",
+        name: "James",
+        email: "james@example.org"
+      },
+      suggestedAskAmount: "$100.00",
+      suggestedAskAmountCents: 10000,
+      lastDonationAt: "2026-04-14T18:30:00.000Z",
+      lastDonationAmount: "$75.00",
+      lastDonationAmountCents: 7500,
+      upgradeScore: 62,
+      upgradeIndicators: ["Increased giving trend", "Frequent attendance", "Strong communication response"]
+    }
+  ],
+  lapsedDonors: [
+    {
+      contactId: "contact-3",
+      displayName: "Nadia Flores",
+      primaryEmail: "nadia@example.org",
+      owner: null,
+      lastInteractionAt: "2025-12-10T17:00:00.000Z",
+      lastDonationAt: "2025-04-01T16:00:00.000Z",
+      lastDonationAmount: "$150.00",
+      lastDonationAmountCents: 15000,
+      daysSinceLastDonation: 406,
+      urgencyLabel: "Lapsed",
+      urgencyTone: "critical"
+    }
+  ],
   needsBackgroundRefresh: true
 };
 

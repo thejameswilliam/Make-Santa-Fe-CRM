@@ -1,4 +1,5 @@
 import type {
+  CultivationStatusKey,
   ContactEffectiveRoleTagKey,
   ContactManualRoleTagKey,
   LaneKey,
@@ -63,6 +64,72 @@ export interface DashboardData {
   }>;
   taggedContacts: ContactListItem[];
   syncStatus: SyncStatusCard[];
+  needsBackgroundRefresh: boolean;
+}
+
+export interface CultivationOwnerOption {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface CultivationWorkflowState {
+  status: CultivationStatusKey;
+  nextFollowUpAt: string | null;
+  owner: CultivationOwnerOption | null;
+}
+
+export interface PriorityDonorItem extends CultivationWorkflowState {
+  contactId: string;
+  displayName: string;
+  primaryEmail: string | null;
+  priorityScore: number;
+  suggestedAskAmount: string;
+  suggestedAskAmountCents: number | null;
+  lastInteractionAt: string | null;
+  lastDonationAt: string | null;
+  lastDonationAmount: string | null;
+  lastDonationAmountCents: number | null;
+  daysSinceLastDonation: number | null;
+  urgencyLabel: string;
+  urgencyTone: "critical" | "warn" | "info" | "calm";
+  upgradeScore: number;
+  upgradeIndicators: string[];
+}
+
+export interface UpgradeDonorItem {
+  contactId: string;
+  displayName: string;
+  primaryEmail: string | null;
+  owner: CultivationOwnerOption | null;
+  suggestedAskAmount: string;
+  suggestedAskAmountCents: number | null;
+  lastDonationAt: string | null;
+  lastDonationAmount: string | null;
+  lastDonationAmountCents: number | null;
+  upgradeScore: number;
+  upgradeIndicators: string[];
+}
+
+export interface LapsedDonorItem {
+  contactId: string;
+  displayName: string;
+  primaryEmail: string | null;
+  owner: CultivationOwnerOption | null;
+  lastInteractionAt: string | null;
+  lastDonationAt: string | null;
+  lastDonationAmount: string | null;
+  lastDonationAmountCents: number | null;
+  daysSinceLastDonation: number | null;
+  urgencyLabel: string;
+  urgencyTone: "critical" | "warn" | "info" | "calm";
+}
+
+export interface CultivationDashboardData {
+  ownerOptions: CultivationOwnerOption[];
+  priorityQueue: PriorityDonorItem[];
+  upgradeCandidates: UpgradeDonorItem[];
+  lapsedDonors: LapsedDonorItem[];
   needsBackgroundRefresh: boolean;
 }
 
