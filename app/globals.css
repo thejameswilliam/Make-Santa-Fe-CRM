@@ -1081,13 +1081,29 @@ textarea::placeholder {
 
 .people-filter-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 0.8fr) minmax(220px, 0.8fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.8fr) minmax(220px, 0.8fr) auto;
   gap: 14px;
   align-items: end;
 }
 
 .people-filter-field {
   align-self: end;
+}
+
+.people-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 2px 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.people-filter-toggle input {
+  margin: 0;
 }
 
 .people-toolbar-grid {

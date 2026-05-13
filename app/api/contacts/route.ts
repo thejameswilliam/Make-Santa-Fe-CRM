@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   const laneKey = requestedLane && requestedLane in LANE_META ? (requestedLane as LaneKey) : null;
   const requestedSort = searchParams.get("sort")?.trim() ?? "";
   const sortBy = isPeopleSortKey(requestedSort) ? requestedSort : "LAST_INTERACTION";
+  const includeInactive = searchParams.get("includeInactive") === "1";
   const requestedLimit = Number(searchParams.get("limit") ?? "20");
   const limit = Number.isFinite(requestedLimit)
     ? Math.max(1, Math.min(requestedLimit, 100))
@@ -32,7 +33,8 @@ export async function GET(request: NextRequest) {
     excludeContactId: excludeContactId || null,
     searchMode: mode,
     laneKey,
-    sortBy
+    sortBy,
+    activeOnly: !includeInactive && mode !== "email"
   });
 
   return NextResponse.json({ contacts });

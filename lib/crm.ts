@@ -1517,9 +1517,11 @@ export async function getPeople(
     searchMode?: "all" | "email";
     laneKey?: LaneKey | null;
     sortBy?: PeopleSortKey;
+    activeOnly?: boolean;
   }
 ): Promise<ContactListItem[]> {
   const sortBy = options?.sortBy ?? "LAST_INTERACTION";
+  const activeOnly = options?.activeOnly ?? options?.searchMode !== "email";
 
   if (!prisma) {
     const query = search?.trim().toLowerCase();
@@ -1531,8 +1533,9 @@ export async function getPeople(
           ].some((value) => value.toLowerCase().includes(query))
         : true;
       const matchesLane = options?.laneKey ? contact.recentLaneKeys.includes(options.laneKey) : true;
+      const matchesActive = activeOnly ? contact.isActive : true;
 
-      return matchesQuery && matchesLane;
+      return matchesQuery && matchesLane && matchesActive;
     });
 
     const spaceUseCountByContactId =
@@ -1608,6 +1611,30 @@ export async function getPeople(
     });
   }
 
+  if (activeOnly) {
+    const activeSince = new Date(Date.now() - 365 * DAY_MS);
+    andFilters.push({
+      OR: [
+        {
+          timelineEvents: {
+            some: {
+              laneKey: { not: PrismaLaneKey.EMAIL },
+              occurredAt: { gte: activeSince }
+            }
+          }
+        },
+        {
+          manualInteractions: {
+            some: {
+              laneKey: { not: PrismaLaneKey.EMAIL },
+              occurredAt: { gte: activeSince }
+            }
+          }
+        }
+      ]
+    });
+  }
+
   const contacts = await db.contact.findMany({
     where: {
       mergedIntoId: null,
@@ -1644,13 +1671,13 @@ export async function getPeople(
   const volunteerMinutesByContactId = new Map<string, number>();
   const spaceUseCountByContactId = new Map<string, number>();
   const contactIds = uniqueContacts.map((contact) => contact.id);
-  const [activeContactIds, donorContactIds] = await Promise.all([
-    getActiveContactIds(db, contactIds),
+  const [computedActiveContactIds, donorContactIds] = await Promise.all([
+    activeOnly ? Promise.resolve(new Set<string>(contactIds)) : getActiveContactIds(db, contactIds),
     getDonorContactIds(db, contactIds)
   ]);
   const mappedContacts = uniqueContacts.map((contact) =>
     mapContactListItem(contact, {
-      isActive: activeContactIds.has(contact.id),
+      isActive: computedActiveContactIds.has(contact.id),
       hasDonorRole: donorContactIds.has(contact.id)
     })
   );

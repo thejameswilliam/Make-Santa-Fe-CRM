@@ -21,11 +21,13 @@ function uniqueContacts(items: ContactListItem[]) {
 
 export function PeopleSearch({
   initialContacts,
+  initialIncludeInactive = false,
   initialLane = "",
   initialQuery = "",
   initialSort = "LAST_INTERACTION"
 }: {
   initialContacts: ContactListItem[];
+  initialIncludeInactive?: boolean;
   initialLane?: LaneKey | "";
   initialQuery?: string;
   initialSort?: PeopleSortKey;
@@ -34,6 +36,7 @@ export function PeopleSearch({
   const deferredQuery = useDeferredValue(query);
   const [laneFilter, setLaneFilter] = useState<LaneKey | "">(initialLane);
   const [sortBy, setSortBy] = useState<PeopleSortKey>(initialSort);
+  const [includeInactive, setIncludeInactive] = useState(initialIncludeInactive);
   const [contacts, setContacts] = useState<ContactListItem[]>(() => uniqueContacts(initialContacts));
   const [loading, setLoading] = useState(false);
 
@@ -41,7 +44,7 @@ export function PeopleSearch({
     const trimmed = deferredQuery.trim();
     const hasLaneFilter = laneFilter.length > 0;
 
-    if (trimmed.length === 0 && !hasLaneFilter && sortBy === initialSort) {
+    if (trimmed.length === 0 && !hasLaneFilter && sortBy === initialSort && includeInactive === initialIncludeInactive) {
       setContacts(uniqueContacts(initialContacts));
       setLoading(false);
       return;
@@ -67,6 +70,10 @@ export function PeopleSearch({
 
         if (laneFilter) {
           params.set("lane", laneFilter);
+        }
+
+        if (includeInactive) {
+          params.set("includeInactive", "1");
         }
 
         params.set("sort", sortBy);
@@ -97,7 +104,7 @@ export function PeopleSearch({
     void loadContacts();
 
     return () => controller.abort();
-  }, [deferredQuery, initialContacts, initialSort, laneFilter, sortBy]);
+  }, [deferredQuery, includeInactive, initialContacts, initialIncludeInactive, initialSort, laneFilter, sortBy]);
 
   const trimmedQuery = query.trim();
   const showMinimumMessage = trimmedQuery.length > 0 && trimmedQuery.length < 3;
@@ -152,8 +159,21 @@ export function PeopleSearch({
                   </select>
                 </label>
               </div>
+              <label className="people-filter-toggle">
+                <input
+                  checked={includeInactive}
+                  onChange={(event) => setIncludeInactive(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Include inactive contacts</span>
+              </label>
             </div>
             {showMinimumMessage ? <p className="form-note">Type at least 3 characters to add name or email search.</p> : null}
+            {!includeInactive ? (
+              <p className="form-note">
+                Inactive contacts are hidden by default so people search stays fast and focused.
+              </p>
+            ) : null}
             {loading ? <p className="form-note">Searching…</p> : null}
           </div>
           <CreateContactForm />
