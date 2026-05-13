@@ -112,25 +112,62 @@ try {
     `
   );
 
-  const samples = await runStep(
-    `Loading ${sampleCount} sample candidate contacts`,
-    () => prisma.$queryRaw`
-    ${candidateContactsCte}
-    SELECT
-      c.id,
-      COALESCE(c."displayName", 'Unnamed contact') AS "displayName",
-      ce.email AS "primaryEmail",
-      COUNT(te.id)::int AS "newsletterEventCount",
-      MAX(te."occurredAt") AS "lastNewsletterAt"
-    FROM candidate_contacts cc
-    JOIN "Contact" c ON c.id = cc.id
-    LEFT JOIN "ContactEmail" ce ON ce.id = c."primaryEmailId"
-    LEFT JOIN "TimelineEvent" te ON te."contactId" = c.id
-    GROUP BY c.id, c."displayName", ce.email
-    ORDER BY MAX(te."occurredAt") DESC NULLS LAST, c.id ASC
-    LIMIT ${sampleCount}
-    `
-  );
+  const samples = await runStep(`Loading ${sampleCount} sample candidate contacts`, async () => {
+    const sampleContacts = await prisma.$queryRaw`
+      ${candidateContactsCte}
+      SELECT
+        c.id,
+        COALESCE(c."displayName", 'Unnamed contact') AS "displayName",
+        ce.email AS "primaryEmail"
+      FROM candidate_contacts cc
+      JOIN "Contact" c ON c.id = cc.id
+      LEFT JOIN "ContactEmail" ce ON ce.id = c."primaryEmailId"
+      ORDER BY c."updatedAt" DESC, c.id ASC
+      LIMIT ${sampleCount}
+    `;
+
+    if (sampleContacts.length === 0) {
+      return [];
+    }
+
+    const sampleIds = sampleContacts.map((contact) => contact.id);
+    const newsletterStats = await prisma.timelineEvent.groupBy({
+      by: ["contactId"],
+      where: {
+        contactId: { in: sampleIds },
+        source: "NEWSLETTER",
+        laneKey: "EMAIL"
+      },
+      _count: {
+        _all: true
+      },
+      _max: {
+        occurredAt: true
+      }
+    });
+
+    const newsletterStatsByContactId = new Map(
+      newsletterStats.map((entry) => [
+        entry.contactId,
+        {
+          newsletterEventCount: entry._count._all,
+          lastNewsletterAt: entry._max.occurredAt
+        }
+      ])
+    );
+
+    return sampleContacts.map((contact) => {
+      const stats = newsletterStatsByContactId.get(contact.id);
+
+      return {
+        id: contact.id,
+        displayName: contact.displayName,
+        primaryEmail: contact.primaryEmail,
+        newsletterEventCount: stats?.newsletterEventCount ?? 0,
+        lastNewsletterAt: stats?.lastNewsletterAt ?? null
+      };
+    });
+  });
 
   console.table([
     {
