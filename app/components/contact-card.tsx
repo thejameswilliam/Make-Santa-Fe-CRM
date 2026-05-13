@@ -19,6 +19,14 @@ function buildInitials(name: string) {
   return parts.map((part) => part.charAt(0).toUpperCase()).join("");
 }
 
+function buildCardAccentPillStyle(color: string) {
+  return {
+    background: `color-mix(in srgb, ${color} 30%, rgba(6, 8, 20, 0.96))`,
+    color: "#fff",
+    borderColor: `color-mix(in srgb, ${color} 44%, rgba(255, 255, 255, 0.06))`
+  };
+}
+
 export function ContactCard({
   contact,
   eyebrow = "Primary record"
@@ -70,11 +78,7 @@ export function ContactCard({
                 <span
                   className="role-tag-pill"
                   key={`${contact.id}-${roleTag}`}
-                  style={{
-                    background: CONTACT_ROLE_TAG_META[roleTag].color,
-                    color: CONTACT_ROLE_TAG_META[roleTag].textColor,
-                    borderColor: "transparent"
-                  }}
+                  style={buildCardAccentPillStyle(CONTACT_ROLE_TAG_META[roleTag].color)}
                 >
                   {CONTACT_ROLE_TAG_META[roleTag].label}
                 </span>
@@ -91,11 +95,7 @@ export function ContactCard({
                 <span
                   className="lane-pill"
                   key={`${contact.id}-${lane}`}
-                  style={{
-                    background: LANE_META[lane].color,
-                    color: LANE_META[lane].textColor,
-                    borderColor: "transparent"
-                  }}
+                  style={buildCardAccentPillStyle(LANE_META[lane].color)}
                 >
                   {LANE_META[lane].label}
                 </span>

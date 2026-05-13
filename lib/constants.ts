@@ -37,17 +37,17 @@ export const PROFILE_SOURCE_PRIORITY: SourceSystemKey[] = [
 ];
 
 export const LANE_META = {
-  DONOR: { label: "Donor", color: "#ff7a59", textColor: "#170807" },
-  MEMBER: { label: "Member", color: "#ff4655", textColor: "#fff5f6" },
-  VOLUNTEER: { label: "Volunteer", color: "#c94d3f", textColor: "#fff2ec" },
-  RESERVER: { label: "Reserver", color: "#a93a48", textColor: "#fff1f4" },
-  SPACE_USE: { label: "Space Use / Sign-In", color: "#5e6778", textColor: "#f4f7ff" },
-  PURCHASE: { label: "Purchase", color: "#ff9a3c", textColor: "#180b04" },
-  CLASS: { label: "Class", color: "#d95b7b", textColor: "#16090d" },
-  COMMUNITY_EVENT: { label: "Community Event", color: "#ff5270", textColor: "#18080c" },
-  EMAIL: { label: "Email", color: "#bb4b72", textColor: "#fff2f7" },
-  NOTES: { label: "Notes", color: "#6a4a52", textColor: "#fff4f6" },
-  OTHER: { label: "Other Manual Interaction", color: "#4f5664", textColor: "#f6f7fb" }
+  DONOR: { label: "Donor", color: "#ff5dd6", textColor: "#fff9ff" },
+  MEMBER: { label: "Member", color: "#8e68ff", textColor: "#f7f2ff" },
+  VOLUNTEER: { label: "Volunteer", color: "#35e7c5", textColor: "#f3fffc" },
+  RESERVER: { label: "Reserver", color: "#ff8c66", textColor: "#fff8f4" },
+  SPACE_USE: { label: "Space Use / Sign-In", color: "#61e8ff", textColor: "#f4feff" },
+  PURCHASE: { label: "Purchase", color: "#ffc857", textColor: "#140d00" },
+  CLASS: { label: "Class", color: "#c45dff", textColor: "#fbf4ff" },
+  COMMUNITY_EVENT: { label: "Community Event", color: "#ff6aa8", textColor: "#fff6fb" },
+  EMAIL: { label: "Email", color: "#57b7ff", textColor: "#f5fbff" },
+  NOTES: { label: "Notes", color: "#8d93b5", textColor: "#f7f8ff" },
+  OTHER: { label: "Other Manual Interaction", color: "#6477a8", textColor: "#f7f9ff" }
 } as const;
 
 export type LaneKey = keyof typeof LANE_META;
@@ -76,11 +76,11 @@ export const CONTACT_ROLE_TAG_META: Record<
     manual: boolean;
   }
 > = {
-  BOARD_MEMBER: { label: "Board member", color: "#ffd166", textColor: "#1a1200", manual: true },
-  INSTRUCTOR: { label: "Instructor", color: "#7ad7ff", textColor: "#04141a", manual: true },
-  VOLUNTEER: { label: "Volunteer", color: "#c94d3f", textColor: "#fff2ec", manual: true },
-  STAFF: { label: "Staff", color: "#8ef0b0", textColor: "#06140b", manual: true },
-  DONOR: { label: "Donor", color: "#ff7a59", textColor: "#170807", manual: false }
+  BOARD_MEMBER: { label: "Board member", color: "#ff7cd8", textColor: "#fff9ff", manual: true },
+  INSTRUCTOR: { label: "Instructor", color: "#62ddff", textColor: "#f4fdff", manual: true },
+  VOLUNTEER: { label: "Volunteer", color: "#35e7c5", textColor: "#f3fffc", manual: true },
+  STAFF: { label: "Staff", color: "#8df59d", textColor: "#071308", manual: true },
+  DONOR: { label: "Donor", color: "#ff5dd6", textColor: "#fff9ff", manual: false }
 };
 
 export function isContactManualRoleTagKey(value?: string | null): value is ContactManualRoleTagKey {

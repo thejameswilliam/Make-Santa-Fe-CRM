@@ -96,25 +96,6 @@ export default async function DashboardPage({
           ))}
         </section>
 
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <span className="eyebrow">Favorites</span>
-              <h2 className="section-title">Favorite people</h2>
-            </div>
-          </div>
-
-          <div className="contact-list dashboard-favorite-list">
-            {data.favoriteContacts.length === 0 ? (
-              <div className="empty-state">No favorite people yet.</div>
-            ) : (
-              data.favoriteContacts.map((contact) => (
-                <ContactCard contact={contact} eyebrow="Favorited record" key={contact.id} />
-              ))
-            )}
-          </div>
-        </section>
-
         {data.selectedRoleTag !== "ALL" ? (
           <section className="panel">
             <div className="panel-header">
@@ -141,6 +122,25 @@ export default async function DashboardPage({
             </div>
           </section>
         ) : null}
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="eyebrow">Favorites</span>
+              <h2 className="section-title">Favorite people</h2>
+            </div>
+          </div>
+
+          <div className="contact-list dashboard-favorite-list">
+            {data.favoriteContacts.length === 0 ? (
+              <div className="empty-state">No favorite people yet.</div>
+            ) : (
+              data.favoriteContacts.map((contact) => (
+                <ContactCard contact={contact} eyebrow="Favorited record" key={contact.id} />
+              ))
+            )}
+          </div>
+        </section>
       </AppShell>
     );
   } catch (error) {
