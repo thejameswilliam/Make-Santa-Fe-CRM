@@ -159,3 +159,32 @@ After the first successful deploy:
 
 - If `DATABASE_URL` is not set, the UI falls back to demo data so the app shell can still render during setup.
 - The bridge still exposes filter fallbacks for custom sign-in, reservation, and newsletter sources when the expected tables are not present.
+
+## One-time newsletter cleanup
+
+If older backfills already created CRM contacts from newsletter-only activity, you can remove those records with the built-in cleanup script.
+
+The cleanup is intentionally conservative. It only deletes contacts when all of the following are true:
+- every imported timeline event is `NEWSLETTER` + `EMAIL`
+- there are no manual interactions, favorites, manual role tags, merge audits, or assigned unmatched events
+- all attached emails, profile values, and external identities came from the newsletter import path
+
+Always run a dry run first:
+
+```bash
+npm run cleanup:newsletter-only
+```
+
+You can adjust the sample size shown in the report:
+
+```bash
+npm run cleanup:newsletter-only -- --sample=25
+```
+
+When the dry-run count and samples look correct, apply it:
+
+```bash
+npm run cleanup:newsletter-only -- --apply
+```
+
+For production on DigitalOcean, run the same command from the app console or a one-off job with the production `DATABASE_URL` and `DATABASE_CA_CERT` environment variables available.
