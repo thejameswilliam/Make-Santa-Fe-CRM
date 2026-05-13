@@ -1294,6 +1294,12 @@ textarea::placeholder {
   gap: 18px;
 }
 
+.people-load-more {
+  display: flex;
+  justify-content: center;
+  padding-top: 18px;
+}
+
 .contact-card {
   position: relative;
   display: grid;

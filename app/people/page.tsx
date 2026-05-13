@@ -19,7 +19,8 @@ export default async function PeoplePage({
   const initialSort: PeopleSortKey = isPeopleSortKey(requestedSort) ? requestedSort : "LAST_INTERACTION";
   const initialIncludeInactive = includeInactive === "1";
   try {
-    const contacts = await getPeople(initialQuery.length >= 3 ? initialQuery : "", {
+    const people = await getPeople(initialQuery.length >= 3 ? initialQuery : "", {
+      limit: 36,
       laneKey: initialLane || null,
       sortBy: initialSort,
       activeOnly: !initialIncludeInactive
@@ -28,7 +29,8 @@ export default async function PeoplePage({
     return (
       <AppShell currentPath="/people" session={session}>
         <PeopleSearch
-          initialContacts={contacts}
+          initialContacts={people.contacts}
+          initialHasMore={people.hasMore}
           initialIncludeInactive={initialIncludeInactive}
           initialLane={initialLane}
           initialQuery={initialQuery}

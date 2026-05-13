@@ -15,6 +15,7 @@ import {
   persistContactCertifications,
   persistExternalIdentities,
   persistProfileValues,
+  refreshContactListSummaries,
   upsertUnmatchedEvent
 } from "@/lib/crm";
 import { config } from "@/lib/config";
@@ -579,6 +580,7 @@ export async function syncSource(
   let hasMore = true;
   const errors: string[] = [];
   const contactResolutionCache = new Map<string, string | null>();
+  const touchedContactIds = new Set<string>();
   let estimatedTotalCount: number | null = null;
 
   const emitProgress = (status: SyncStatusKey) => {
@@ -628,9 +630,10 @@ export async function syncSource(
             contactResolutionCache
           });
 
-          if (result === "IMPORTED") {
+          if (result.status === "IMPORTED") {
             importedCount += 1;
-          } else if (result === "UNMATCHED") {
+            touchedContactIds.add(result.contactId);
+          } else if (result.status === "UNMATCHED") {
             unmatchedCount += 1;
           }
         } catch (error) {
@@ -648,6 +651,11 @@ export async function syncSource(
           errorCount
         }
       });
+
+      if (touchedContactIds.size > 0) {
+        await refreshContactListSummaries(Array.from(touchedContactIds), db);
+        touchedContactIds.clear();
+      }
 
       emitProgress("RUNNING");
 
@@ -742,7 +750,7 @@ async function ingestSourceEvent(input: {
 
   if (!normalized) {
     if (requiresExistingContactForImport(input.source)) {
-      return "SKIPPED" as const;
+      return { status: "SKIPPED" as const };
     }
 
     await upsertUnmatchedEvent({
@@ -758,7 +766,7 @@ async function ingestSourceEvent(input: {
       rawPayload: input.event,
       syncRunId: input.syncRunId
     });
-    return "UNMATCHED" as const;
+    return { status: "UNMATCHED" as const };
   }
 
   let contactId =
@@ -774,7 +782,7 @@ async function ingestSourceEvent(input: {
   if (!contactId) {
     if (requiresExistingContactForImport(input.source)) {
       input.contactResolutionCache?.set(normalized, null);
-      return "SKIPPED" as const;
+      return { status: "SKIPPED" as const };
     }
 
     const displayName = getAutoCreateContactDisplayName(input.event);
@@ -804,7 +812,7 @@ async function ingestSourceEvent(input: {
       rawPayload: input.event,
       syncRunId: input.syncRunId
     });
-    return "UNMATCHED" as const;
+    return { status: "UNMATCHED" as const };
   }
 
   const existingTimelineEvent = await db.timelineEvent.findUnique({
@@ -917,7 +925,10 @@ async function ingestSourceEvent(input: {
     });
   });
 
-  return "IMPORTED" as const;
+  return {
+    status: "IMPORTED" as const,
+    contactId
+  };
 }
 
 async function primeContactResolutionCache(

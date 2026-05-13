@@ -485,6 +485,232 @@ function extractPhotoUrlFromRawPayload(rawPayload: Prisma.JsonValue | null | und
   return photoUrl.trim();
 }
 
+type DatabaseClient = ReturnType<typeof assertDatabase> | Prisma.TransactionClient;
+
+const CONTACT_SUMMARY_REFRESH_CHUNK_SIZE = 200;
+
+function chunkItems<T>(items: T[], chunkSize: number) {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+
+  return chunks;
+}
+
+export async function refreshContactListSummaries(
+  contactIds: string[],
+  dbClient: DatabaseClient = assertDatabase()
+) {
+  if (contactIds.length === 0) {
+    return;
+  }
+
+  const uniqueContactIds = Array.from(new Set(contactIds.filter(Boolean)));
+  if (uniqueContactIds.length === 0) {
+    return;
+  }
+
+  for (const contactIdChunk of chunkItems(uniqueContactIds, CONTACT_SUMMARY_REFRESH_CHUNK_SIZE)) {
+    const contactIdSql = Prisma.join(contactIdChunk.map((contactId) => Prisma.sql`${contactId}`));
+
+    await dbClient.$executeRaw`
+      WITH target_contacts AS (
+        SELECT
+          c.id,
+          COALESCE(BTRIM(c."displayName"), '') AS "displayName"
+        FROM "Contact" c
+        WHERE c.id IN (${contactIdSql})
+      ),
+      combined_activities AS (
+        SELECT
+          te."contactId",
+          te."occurredAt",
+          te."laneKey",
+          te."eventKind",
+          te."amountCents",
+          te.metadata::jsonb AS metadata,
+          te."rawPayload"::jsonb AS "rawPayload",
+          NULL::text AS "interactionSlug"
+        FROM "TimelineEvent" te
+        JOIN target_contacts tc ON tc.id = te."contactId"
+
+        UNION ALL
+
+        SELECT
+          mi."contactId",
+          mi."occurredAt",
+          mi."laneKey",
+          NULL::text AS "eventKind",
+          NULL::integer AS "amountCents",
+          mi.metadata::jsonb AS metadata,
+          NULL::jsonb AS "rawPayload",
+          it.slug AS "interactionSlug"
+        FROM "ManualInteraction" mi
+        JOIN "InteractionType" it ON it.id = mi."interactionTypeId"
+        JOIN target_contacts tc ON tc.id = mi."contactId"
+      ),
+      activity_rollup AS (
+        SELECT
+          tc.id AS "contactId",
+          MAX(ca."occurredAt") AS "lastInteractionAt",
+          MAX(ca."occurredAt") FILTER (WHERE ca."laneKey" <> 'EMAIL'::"LaneKey") AS "lastNonEmailInteractionAt"
+        FROM target_contacts tc
+        LEFT JOIN combined_activities ca ON ca."contactId" = tc.id
+        GROUP BY tc.id
+      ),
+      lane_rollup AS (
+        SELECT
+          tc.id AS "contactId",
+          COALESCE(
+            ARRAY(
+              SELECT lane_rows."laneKey"
+              FROM (
+                SELECT
+                  ca."laneKey",
+                  MAX(ca."occurredAt") AS "lastSeenAt"
+                FROM combined_activities ca
+                WHERE ca."contactId" = tc.id
+                GROUP BY ca."laneKey"
+                ORDER BY "lastSeenAt" DESC, ca."laneKey" ASC
+                LIMIT 6
+              ) AS lane_rows
+            ),
+            ARRAY[]::"LaneKey"[]
+          ) AS "recentLaneKeys",
+          COALESCE(
+            ARRAY(
+              SELECT lane_rows."laneKey"
+              FROM (
+                SELECT
+                  ca."laneKey",
+                  MAX(ca."occurredAt") AS "lastSeenAt"
+                FROM combined_activities ca
+                WHERE ca."contactId" = tc.id
+                GROUP BY ca."laneKey"
+                ORDER BY "lastSeenAt" DESC, ca."laneKey" ASC
+              ) AS lane_rows
+            ),
+            ARRAY[]::"LaneKey"[]
+          ) AS "activityLaneKeys"
+        FROM target_contacts tc
+      ),
+      photo_rollup AS (
+        SELECT DISTINCT ON (te."contactId")
+          te."contactId",
+          NULLIF(BTRIM(te."rawPayload"::jsonb -> 'profile' ->> 'photoUrl'), '') AS "photoUrl"
+        FROM "TimelineEvent" te
+        JOIN target_contacts tc ON tc.id = te."contactId"
+        WHERE NULLIF(BTRIM(te."rawPayload"::jsonb -> 'profile' ->> 'photoUrl'), '') IS NOT NULL
+        ORDER BY te."contactId", te."occurredAt" DESC
+      ),
+      metrics_rollup AS (
+        SELECT
+          tc.id AS "contactId",
+          COALESCE(
+            SUM(
+              CASE
+                WHEN ca."eventKind" = 'donation' AND ca."amountCents" IS NOT NULL THEN ca."amountCents"
+                ELSE 0
+              END
+            ),
+            0
+          ) +
+          COALESCE(
+            SUM(
+              CASE
+                WHEN ca."interactionSlug" = 'donation' AND jsonb_typeof(ca.metadata -> 'amountCents') = 'number'
+                  THEN ROUND((ca.metadata ->> 'amountCents')::numeric)::int
+                ELSE 0
+              END
+            ),
+            0
+          ) AS "donationTotalCents",
+          COALESCE(
+            BOOL_OR(ca."eventKind" = 'donation' OR ca."interactionSlug" = 'donation'),
+            false
+          ) AS "hasDonorHistory",
+          COALESCE(
+            SUM(
+              CASE
+                WHEN ca."laneKey" = 'VOLUNTEER'::"LaneKey" AND jsonb_typeof(ca.metadata -> 'durationMinutes') = 'number'
+                  THEN GREATEST(ROUND((ca.metadata ->> 'durationMinutes')::numeric)::int, 0)
+                ELSE 0
+              END
+            ),
+            0
+          ) AS "volunteerMinutes",
+          COALESCE(
+            SUM(
+              CASE
+                WHEN ca."laneKey" = 'SPACE_USE'::"LaneKey" THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS "spaceUseCount"
+        FROM target_contacts tc
+        LEFT JOIN combined_activities ca ON ca."contactId" = tc.id
+        GROUP BY tc.id
+      ),
+      summary AS (
+        SELECT
+          tc.id AS "contactId",
+          ar."lastInteractionAt",
+          ar."lastNonEmailInteractionAt",
+          lr."recentLaneKeys",
+          lr."activityLaneKeys",
+          pr."photoUrl",
+          mr."hasDonorHistory",
+          mr."donationTotalCents",
+          mr."volunteerMinutes",
+          mr."spaceUseCount",
+          CASE
+            WHEN tc."displayName" = '' THEN ''
+            ELSE LOWER(REGEXP_REPLACE(tc."displayName", '^.*\\s+', ''))
+          END AS "lastNameSortValue"
+        FROM target_contacts tc
+        LEFT JOIN activity_rollup ar ON ar."contactId" = tc.id
+        LEFT JOIN lane_rollup lr ON lr."contactId" = tc.id
+        LEFT JOIN photo_rollup pr ON pr."contactId" = tc.id
+        LEFT JOIN metrics_rollup mr ON mr."contactId" = tc.id
+      )
+      UPDATE "Contact" c
+      SET
+        "lastInteractionAt" = summary."lastInteractionAt",
+        "lastNonEmailInteractionAt" = summary."lastNonEmailInteractionAt",
+        "recentLaneKeys" = summary."recentLaneKeys",
+        "activityLaneKeys" = summary."activityLaneKeys",
+        "photoUrl" = summary."photoUrl",
+        "hasDonorHistory" = summary."hasDonorHistory",
+        "donationTotalCents" = summary."donationTotalCents",
+        "volunteerMinutes" = summary."volunteerMinutes",
+        "spaceUseCount" = summary."spaceUseCount",
+        "lastNameSortValue" = summary."lastNameSortValue"
+      FROM summary
+      WHERE c.id = summary."contactId"
+    `;
+  }
+}
+
+export async function rebuildAllContactListSummaries() {
+  const db = assertDatabase();
+  const contacts = await db.contact.findMany({
+    where: {
+      mergedIntoId: null
+    },
+    select: {
+      id: true
+    },
+    orderBy: {
+      createdAt: "asc"
+    }
+  });
+
+  await refreshContactListSummaries(contacts.map((contact) => contact.id), db);
+}
+
 function mapContactListItem(contact: {
   id: string;
   displayName: string | null;
@@ -542,6 +768,45 @@ function mapContactListItem(contact: {
     }),
     recentLaneKeys: Array.from(new Set(combinedInteractions.map((event) => event.laneKey))),
     lastInteractionAt: combinedInteractions[0]?.occurredAt.toISOString() ?? null
+  };
+}
+
+function mapContactSummaryListItem(contact: {
+  id: string;
+  displayName: string | null;
+  isFavorite: boolean;
+  manualRoleTags: PrismaContactManualRoleTag[];
+  photoUrl: string | null;
+  recentLaneKeys: PrismaLaneKey[];
+  lastInteractionAt: Date | null;
+  lastNonEmailInteractionAt: Date | null;
+  hasDonorHistory: boolean;
+  primaryEmail: {
+    email: string;
+  } | null;
+  emails: Array<{
+    email: string;
+  }>;
+}): ContactListItem {
+  const fallbackEmail = contact.emails[0]?.email ?? null;
+  const primaryEmail = contact.primaryEmail?.email ?? fallbackEmail;
+
+  return {
+    id: contact.id,
+    displayName: contact.displayName ?? primaryEmail ?? "Unnamed contact",
+    primaryEmail,
+    photoUrl: contact.photoUrl,
+    isActive: Boolean(
+      contact.lastNonEmailInteractionAt &&
+      contact.lastNonEmailInteractionAt.getTime() >= Date.now() - 365 * DAY_MS
+    ),
+    isFavorite: contact.isFavorite,
+    effectiveRoleTags: buildEffectiveRoleTags({
+      manualRoleTags: contact.manualRoleTags as ContactManualRoleTagKey[],
+      hasDonorHistory: contact.hasDonorHistory
+    }),
+    recentLaneKeys: contact.recentLaneKeys as LaneKey[],
+    lastInteractionAt: contact.lastInteractionAt?.toISOString() ?? null
   };
 }
 
@@ -1151,6 +1416,81 @@ function sortContactListItems(
 
     return compareStringsAsc(left.displayName, right.displayName);
   });
+}
+
+function buildPeopleOrderBy(sortBy: PeopleSortKey): Prisma.ContactOrderByWithRelationInput[] {
+  const activeFirst = {
+    lastNonEmailInteractionAt: {
+      sort: "desc" as const,
+      nulls: "last" as const
+    }
+  };
+  const recentAnyInteraction = {
+    lastInteractionAt: {
+      sort: "desc" as const,
+      nulls: "last" as const
+    }
+  };
+
+  if (sortBy === "LAST_NAME") {
+    return [
+      activeFirst,
+      {
+        lastNameSortValue: "asc"
+      },
+      {
+        displayName: "asc"
+      },
+      recentAnyInteraction
+    ];
+  }
+
+  if (sortBy === "DONOR_LEVEL") {
+    return [
+      activeFirst,
+      {
+        donationTotalCents: "desc"
+      },
+      recentAnyInteraction,
+      {
+        displayName: "asc"
+      }
+    ];
+  }
+
+  if (sortBy === "VOLUNTEER_HOURS") {
+    return [
+      activeFirst,
+      {
+        volunteerMinutes: "desc"
+      },
+      recentAnyInteraction,
+      {
+        displayName: "asc"
+      }
+    ];
+  }
+
+  if (sortBy === "SPACE_USE_FREQUENCY") {
+    return [
+      activeFirst,
+      {
+        spaceUseCount: "desc"
+      },
+      recentAnyInteraction,
+      {
+        displayName: "asc"
+      }
+    ];
+  }
+
+  return [
+    activeFirst,
+    recentAnyInteraction,
+    {
+      displayName: "asc"
+    }
+  ];
 }
 
 function getAvailableRoleTags() {
@@ -1990,15 +2330,21 @@ export async function getPeople(
   search?: string | null,
   options?: {
     limit?: number;
+    offset?: number;
     excludeContactId?: string | null;
     searchMode?: "all" | "email";
     laneKey?: LaneKey | null;
     sortBy?: PeopleSortKey;
     activeOnly?: boolean;
   }
-): Promise<ContactListItem[]> {
+): Promise<{
+  contacts: ContactListItem[];
+  hasMore: boolean;
+}> {
   const sortBy = options?.sortBy ?? "LAST_INTERACTION";
   const activeOnly = options?.activeOnly ?? options?.searchMode !== "email";
+  const limit = Math.max(1, Math.min(options?.limit ?? 36, 100));
+  const offset = Math.max(0, options?.offset ?? 0);
 
   if (!prisma) {
     const query = search?.trim().toLowerCase();
@@ -2022,16 +2368,21 @@ export async function getPeople(
               contact.id,
               contact.recentLaneKeys.includes("SPACE_USE") ? 1 : 0
             ])
-          )
+        )
         : undefined;
 
-    return sortContactListItems(
+    const sortedDemoResults = sortContactListItems(
       demoResults.filter((contact) => (options?.excludeContactId ? contact.id !== options.excludeContactId : true)),
       sortBy,
       {
         spaceUseCountByContactId
       }
-    ).slice(0, options?.limit ?? 100);
+    );
+
+    return {
+      contacts: sortedDemoResults.slice(offset, offset + limit),
+      hasMore: offset + limit < sortedDemoResults.length
+    };
   }
 
   await ensureCatalogSeeded();
@@ -2069,46 +2420,18 @@ export async function getPeople(
 
   if (options?.laneKey) {
     andFilters.push({
-      OR: [
-        {
-          timelineEvents: {
-            some: {
-              laneKey: options.laneKey as PrismaLaneKey
-            }
-          }
-        },
-        {
-          manualInteractions: {
-            some: {
-              laneKey: options.laneKey as PrismaLaneKey
-            }
-          }
-        }
-      ]
+      activityLaneKeys: {
+        has: options.laneKey as PrismaLaneKey
+      }
     });
   }
 
   if (activeOnly) {
     const activeSince = new Date(Date.now() - 365 * DAY_MS);
     andFilters.push({
-      OR: [
-        {
-          timelineEvents: {
-            some: {
-              laneKey: { not: PrismaLaneKey.EMAIL },
-              occurredAt: { gte: activeSince }
-            }
-          }
-        },
-        {
-          manualInteractions: {
-            some: {
-              laneKey: { not: PrismaLaneKey.EMAIL },
-              occurredAt: { gte: activeSince }
-            }
-          }
-        }
-      ]
+      lastNonEmailInteractionAt: {
+        gte: activeSince
+      }
     });
   }
 
@@ -2118,162 +2441,43 @@ export async function getPeople(
       ...(options?.excludeContactId ? { id: { not: options.excludeContactId } } : {}),
       ...(andFilters.length > 0 ? { AND: andFilters } : {})
     },
-    include: {
-      emails: true,
-      timelineEvents: {
-        orderBy: { occurredAt: "desc" },
-        take: 6,
+    select: {
+      id: true,
+      displayName: true,
+      isFavorite: true,
+      manualRoleTags: true,
+      photoUrl: true,
+      recentLaneKeys: true,
+      lastInteractionAt: true,
+      lastNonEmailInteractionAt: true,
+      hasDonorHistory: true,
+      primaryEmail: {
         select: {
-          laneKey: true,
-          occurredAt: true,
-          rawPayload: true
+          email: true
         }
       },
-      manualInteractions: {
-        orderBy: { occurredAt: "desc" },
-        take: 6,
+      emails: {
         select: {
-          laneKey: true,
-          occurredAt: true
-        }
+          email: true
+        },
+        orderBy: {
+          createdAt: "asc"
+        },
+        take: 1
       }
     },
-    orderBy: {
-      updatedAt: "desc"
-    }
+    orderBy: buildPeopleOrderBy(sortBy),
+    skip: offset,
+    take: limit + 1
   });
 
-  const uniqueContacts = Array.from(new Map(contacts.map((contact) => [contact.id, contact])).values());
-  const donorLevelCentsByContactId = new Map<string, number>();
-  const volunteerMinutesByContactId = new Map<string, number>();
-  const spaceUseCountByContactId = new Map<string, number>();
-  const contactIds = uniqueContacts.map((contact) => contact.id);
-  const [computedActiveContactIds, donorContactIds] = await Promise.all([
-    activeOnly ? Promise.resolve(new Set<string>(contactIds)) : getActiveContactIds(db, contactIds),
-    getDonorContactIds(db, contactIds)
-  ]);
-  const mappedContacts = uniqueContacts.map((contact) =>
-    mapContactListItem(contact, {
-      isActive: computedActiveContactIds.has(contact.id),
-      hasDonorRole: donorContactIds.has(contact.id)
-    })
-  );
+  const hasMore = contacts.length > limit;
+  const visibleContacts = hasMore ? contacts.slice(0, limit) : contacts;
 
-  if (contactIds.length > 0 && sortBy === "DONOR_LEVEL") {
-    const [donationEvents, manualDonationInteractions] = await Promise.all([
-      db.timelineEvent.findMany({
-        where: {
-          contactId: { in: contactIds },
-          eventKind: "donation"
-        },
-        select: {
-          contactId: true,
-          amountCents: true
-        }
-      }),
-      db.manualInteraction.findMany({
-        where: {
-          contactId: { in: contactIds },
-          laneKey: PrismaLaneKey.DONOR
-        },
-        select: {
-          contactId: true,
-          metadata: true
-        }
-      })
-    ]);
-
-    for (const event of donationEvents) {
-      if (!event.amountCents) {
-        continue;
-      }
-
-      donorLevelCentsByContactId.set(
-        event.contactId,
-        (donorLevelCentsByContactId.get(event.contactId) ?? 0) + event.amountCents
-      );
-    }
-
-    for (const interaction of manualDonationInteractions) {
-      const amountCents = readAmountCentsFromMetadata(interaction.metadata);
-      if (!amountCents) {
-        continue;
-      }
-
-      donorLevelCentsByContactId.set(
-        interaction.contactId,
-        (donorLevelCentsByContactId.get(interaction.contactId) ?? 0) + amountCents
-      );
-    }
-  }
-
-  if (contactIds.length > 0 && sortBy === "VOLUNTEER_HOURS") {
-    const volunteerShiftEvents = await db.timelineEvent.findMany({
-      where: {
-        contactId: { in: contactIds },
-        eventKind: "volunteer_shift"
-      },
-      select: {
-        contactId: true,
-        metadata: true
-      }
-    });
-
-    for (const event of volunteerShiftEvents) {
-      const metadata = toJsonRecord(event.metadata);
-      const durationMinutes = Math.max(0, readJsonNumber(metadata?.durationMinutes) ?? 0);
-      if (durationMinutes <= 0) {
-        continue;
-      }
-
-      volunteerMinutesByContactId.set(
-        event.contactId,
-        (volunteerMinutesByContactId.get(event.contactId) ?? 0) + durationMinutes
-      );
-    }
-  }
-
-  if (contactIds.length > 0 && sortBy === "SPACE_USE_FREQUENCY") {
-    const [timelineSpaceUseCounts, manualSpaceUseCounts] = await Promise.all([
-      db.timelineEvent.groupBy({
-        by: ["contactId"],
-        where: {
-          contactId: { in: contactIds },
-          laneKey: PrismaLaneKey.SPACE_USE
-        },
-        _count: {
-          _all: true
-        }
-      }),
-      db.manualInteraction.groupBy({
-        by: ["contactId"],
-        where: {
-          contactId: { in: contactIds },
-          laneKey: PrismaLaneKey.SPACE_USE
-        },
-        _count: {
-          _all: true
-        }
-      })
-    ]);
-
-    for (const entry of timelineSpaceUseCounts) {
-      spaceUseCountByContactId.set(entry.contactId, entry._count._all);
-    }
-
-    for (const entry of manualSpaceUseCounts) {
-      spaceUseCountByContactId.set(
-        entry.contactId,
-        (spaceUseCountByContactId.get(entry.contactId) ?? 0) + entry._count._all
-      );
-    }
-  }
-
-  return sortContactListItems(mappedContacts, sortBy, {
-    donorLevelCentsByContactId,
-    volunteerMinutesByContactId,
-    spaceUseCountByContactId
-  }).slice(0, options?.limit ?? 100);
+  return {
+    contacts: visibleContacts.map((contact) => mapContactSummaryListItem(contact)),
+    hasMore
+  };
 }
 
 export async function getContactDetail(contactId: string): Promise<ContactDetail | null> {
@@ -2818,7 +3022,9 @@ export async function createContactWithPrimaryEmail(options: {
   source?: SourceSystemKey;
 }) {
   const db = assertDatabase();
-  return db.$transaction(async (tx) => createContactWithPrimaryEmailTx(tx, options));
+  const contactId = await db.$transaction(async (tx) => createContactWithPrimaryEmailTx(tx, options));
+  await refreshContactListSummaries([contactId], db);
+  return contactId;
 }
 
 export async function createManualContact(input: {
@@ -2843,7 +3049,7 @@ export async function createManualContact(input: {
   const occurredAt = new Date();
   const db = assertDatabase();
 
-  return db.$transaction(async (tx) => {
+  const contactId = await db.$transaction(async (tx) => {
     let contactId: string;
 
     if (email) {
@@ -2899,6 +3105,9 @@ export async function createManualContact(input: {
 
     return contactId;
   });
+
+  await refreshContactListSummaries([contactId], db);
+  return contactId;
 }
 
 function mergeTimelineEventMetadataWithOverride(
@@ -2944,7 +3153,8 @@ export async function updateTimelineEventClassification(input: {
     where: { id: input.eventId },
     select: {
       id: true,
-      metadata: true
+      metadata: true,
+      contactId: true
     }
   });
 
@@ -2972,6 +3182,8 @@ export async function updateTimelineEventClassification(input: {
     }
   });
 
+  await refreshContactListSummaries([event.contactId], db);
+
   return {
     eventKind: eventType.eventKind,
     laneKey: eventType.laneKey,
@@ -2994,7 +3206,7 @@ export async function updateManualInteractionClassification(input: {
 
   const interaction = await db.manualInteraction.findUnique({
     where: { id: input.interactionId },
-    select: { id: true }
+    select: { id: true, contactId: true }
   });
 
   if (!interaction) {
@@ -3008,6 +3220,8 @@ export async function updateManualInteractionClassification(input: {
       laneKey: interactionType.laneKey
     }
   });
+
+  await refreshContactListSummaries([interaction.contactId], db);
 
   return {
     eventKind: interactionType.slug,
@@ -3061,6 +3275,8 @@ export async function createManualInteraction(input: {
       createdByName: input.actor?.name
     }
   });
+
+  await refreshContactListSummaries([input.contactId], db);
 }
 
 export async function createContactNote(input: {
@@ -3097,6 +3313,8 @@ export async function createContactNote(input: {
       createdByName: input.actor?.name
     }
   });
+
+  await refreshContactListSummaries([input.contactId], db);
 }
 
 export async function saveInteractionType(input: {
@@ -3578,6 +3796,8 @@ export async function mergeContacts(primaryContactId: string, mergedContactId: s
     maxWait: 10_000,
     timeout: 20_000
   });
+
+  await refreshContactListSummaries([primaryContactId], db);
 }
 
 export async function assignUnmatchedEvent(input: {
@@ -3587,7 +3807,7 @@ export async function assignUnmatchedEvent(input: {
 }) {
   const db = assertDatabase();
 
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const unmatched = await tx.unmatchedEvent.findUnique({
       where: { id: input.unmatchedEventId }
     });
@@ -3653,9 +3873,16 @@ export async function assignUnmatchedEvent(input: {
     }
 
     return {
-      resolvedUnmatchedEventIds
+      resolvedUnmatchedEventIds,
+      contactId
     };
   });
+
+  await refreshContactListSummaries([result.contactId], db);
+
+  return {
+    resolvedUnmatchedEventIds: result.resolvedUnmatchedEventIds
+  };
 }
 
 function deriveDisplayNameFromUnmatched(unmatched: {

@@ -73,6 +73,16 @@ model Contact {
   displayName       String?
   isFavorite        Boolean               @default(false)
   manualRoleTags    ContactManualRoleTag[] @default([])
+  photoUrl          String?
+  recentLaneKeys    LaneKey[]             @default([])
+  activityLaneKeys  LaneKey[]             @default([])
+  lastInteractionAt DateTime?
+  lastNonEmailInteractionAt DateTime?
+  hasDonorHistory   Boolean               @default(false)
+  donationTotalCents Int                  @default(0)
+  volunteerMinutes  Int                   @default(0)
+  spaceUseCount     Int                   @default(0)
+  lastNameSortValue String                @default("")
   mergedIntoId      String?
   primaryEmailId    String?               @unique
   createdAt         DateTime              @default(now())
@@ -92,6 +102,12 @@ model Contact {
   mergeAuditsMerged  MergeAudit[]         @relation("MergeAuditMerged")
 
   @@index([mergedIntoId])
+  @@index([mergedIntoId, lastInteractionAt])
+  @@index([mergedIntoId, lastNonEmailInteractionAt])
+  @@index([mergedIntoId, donationTotalCents])
+  @@index([mergedIntoId, volunteerMinutes])
+  @@index([mergedIntoId, spaceUseCount])
+  @@index([mergedIntoId, lastNameSortValue])
 }
 
 model CrmUser {

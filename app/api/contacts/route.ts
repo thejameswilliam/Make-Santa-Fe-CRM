@@ -19,17 +19,22 @@ export async function GET(request: NextRequest) {
   const requestedSort = searchParams.get("sort")?.trim() ?? "";
   const sortBy = isPeopleSortKey(requestedSort) ? requestedSort : "LAST_INTERACTION";
   const includeInactive = searchParams.get("includeInactive") === "1";
+  const requestedOffset = Number(searchParams.get("offset") ?? "0");
+  const offset = Number.isFinite(requestedOffset)
+    ? Math.max(0, requestedOffset)
+    : 0;
   const requestedLimit = Number(searchParams.get("limit") ?? "20");
   const limit = Number.isFinite(requestedLimit)
     ? Math.max(1, Math.min(requestedLimit, 100))
     : 20;
 
   if (query.length > 0 && query.length < 3) {
-    return NextResponse.json({ contacts: [] });
+    return NextResponse.json({ contacts: [], hasMore: false });
   }
 
-  const contacts = await getPeople(query, {
+  const people = await getPeople(query, {
     limit,
+    offset,
     excludeContactId: excludeContactId || null,
     searchMode: mode,
     laneKey,
@@ -37,5 +42,5 @@ export async function GET(request: NextRequest) {
     activeOnly: !includeInactive && mode !== "email"
   });
 
-  return NextResponse.json({ contacts });
+  return NextResponse.json(people);
 }

@@ -16,7 +16,8 @@
     "db:push": "prisma db push",
     "db:push:prod": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "cleanup:newsletter-only": "node scripts/cleanup-newsletter-only-contacts.mjs"
+    "cleanup:newsletter-only": "node scripts/cleanup-newsletter-only-contacts.mjs",
+    "rebuild:people-summaries": "node scripts/rebuild-contact-list-summaries.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
