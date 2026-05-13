@@ -64,6 +64,7 @@ export function BackfillControl({
   const router = useRouter();
   const [activity, setActivity] = useState<SyncActivityState>(IDLE_ACTIVITY);
   const [starting, setStarting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastFinishedAt = useRef<string | null>(null);
 
@@ -149,9 +150,18 @@ export function BackfillControl({
     });
   }, [activity.finishedAt, activity.message, activity.phase, router]);
 
-  async function handleBackfill() {
+  const overlayVisible = starting || activity.active;
+
+  useEffect(() => {
+    if (overlayVisible) {
+      setConfirming(false);
+    }
+  }, [overlayVisible]);
+
+  async function startBackfill() {
     setError(null);
     setStarting(true);
+    setConfirming(false);
     try {
       const response = await fetch("/api/sync", {
         method: "POST",
@@ -184,24 +194,61 @@ export function BackfillControl({
     }
   }
 
-  const overlayVisible = starting || activity.active;
+  function handleBackfillClick() {
+    if (overlayVisible) {
+      return;
+    }
+
+    if (!confirming) {
+      setConfirming(true);
+      setError(null);
+      return;
+    }
+
+    void startBackfill();
+  }
+
   const progressValue = formatProgressValue(activity, starting);
   const currentSourceHasEstimate = typeof activity.currentSourceEstimatedTotalCount === "number";
 
   return (
     <>
-      <div className={variant === "compact" ? "button-row-compact" : "button-row"}>
-        <button
-          className={variant === "compact" ? "topbar-action-button" : "button"}
-          disabled={overlayVisible}
-          onClick={handleBackfill}
-          type="button"
-        >
-          {variant === "compact" ? "Backfill" : "Run full backfill"}
-        </button>
-      </div>
+      <div className={variant === "compact" ? "backfill-control-compact" : "backfill-control"}>
+        <div className={variant === "compact" ? "button-row-compact" : "button-row"}>
+          <button
+            className={variant === "compact" ? "topbar-action-button topbar-action-button-danger" : "button"}
+            disabled={overlayVisible}
+            onClick={handleBackfillClick}
+            type="button"
+          >
+            {overlayVisible
+              ? "Backfill running"
+              : confirming
+                ? "Start full backfill"
+                : variant === "compact"
+                  ? "Backfill"
+                  : "Run full backfill"}
+          </button>
 
-      {error ? <div className="inline-alert inline-alert-error">{error}</div> : null}
+          {confirming ? (
+            <button className="button-ghost" onClick={() => setConfirming(false)} type="button">
+              Cancel
+            </button>
+          ) : null}
+        </div>
+
+        {confirming ? (
+          <div className="backfill-confirmation">
+            <strong>Warning</strong>
+            <p className="form-note">
+              Full backfill re-imports every source, can take several minutes, and puts extra load on WordPress.
+              Only run it when you intentionally need a complete refresh.
+            </p>
+          </div>
+        ) : null}
+
+        {error ? <div className="inline-alert inline-alert-error">{error}</div> : null}
+      </div>
 
       {overlayVisible ? (
         <div className="sync-overlay" role="alert" aria-live="polite">

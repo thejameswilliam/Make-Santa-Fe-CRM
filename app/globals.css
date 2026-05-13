@@ -239,12 +239,129 @@ textarea::placeholder {
   box-shadow: var(--glow-soft);
 }
 
+.topbar-action-button-danger {
+  border-color: rgba(255, 108, 146, 0.24);
+  color: rgba(255, 238, 245, 0.9);
+}
+
+.topbar-action-button-danger:hover {
+  border-color: rgba(255, 108, 146, 0.4);
+  background:
+    linear-gradient(180deg, rgba(255, 108, 146, 0.16), rgba(255, 79, 216, 0.1)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: 0 0 18px rgba(255, 108, 146, 0.12);
+}
+
 .topbar-meta {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.topbar-menu {
+  position: relative;
+}
+
+.topbar-menu[open] {
+  z-index: 12;
+}
+
+.topbar-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  list-style: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
+  color: rgba(229, 234, 246, 0.82);
+  border: 1px solid rgba(135, 141, 178, 0.16);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.topbar-menu-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.topbar-menu-trigger:hover,
+.topbar-menu[open] .topbar-menu-trigger {
+  color: #ffffff;
+  border-color: rgba(88, 233, 255, 0.42);
+  background:
+    linear-gradient(180deg, rgba(88, 233, 255, 0.12), rgba(255, 79, 216, 0.1)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: var(--glow-soft);
+}
+
+.topbar-menu-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.topbar-menu-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 260px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(18, 12, 32, 0.96), rgba(8, 10, 22, 0.98)),
+    var(--surface-dark);
+  border: 1px solid rgba(114, 120, 255, 0.22);
+  box-shadow: var(--shadow), 0 0 0 1px rgba(88, 233, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.topbar-menu-section {
+  display: grid;
+  gap: 8px;
+}
+
+.topbar-menu-section-danger {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.topbar-menu-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(134, 233, 255, 0.72);
+}
+
+.topbar-menu-links {
+  display: grid;
+  gap: 8px;
+}
+
+.topbar-menu-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid rgba(135, 141, 178, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.012));
+  color: rgba(229, 234, 246, 0.84);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.topbar-menu-link:hover,
+.topbar-menu-link.active {
+  color: #fff;
+  border-color: rgba(88, 233, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(88, 233, 255, 0.1), rgba(255, 79, 216, 0.08)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: 0 0 14px rgba(88, 233, 255, 0.08);
 }
 
 .runtime-issue-panel {
@@ -984,6 +1101,48 @@ textarea::placeholder {
 
 .button-row-compact {
   display: flex;
+}
+
+.backfill-control,
+.backfill-control-compact {
+  display: grid;
+  gap: 10px;
+}
+
+.backfill-control .button-row,
+.backfill-control-compact .button-row-compact {
+  align-items: center;
+}
+
+.backfill-control-compact .button-row-compact {
+  display: grid;
+  gap: 8px;
+}
+
+.backfill-control-compact .topbar-action-button,
+.backfill-control-compact .button-ghost {
+  width: 100%;
+  justify-content: center;
+}
+
+.backfill-confirmation {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 108, 146, 0.22);
+  background: linear-gradient(180deg, rgba(255, 108, 146, 0.1), rgba(255, 79, 216, 0.04));
+}
+
+.backfill-confirmation strong {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 241, 247, 0.98);
+}
+
+.backfill-confirmation .form-note {
+  margin: 0;
+  color: rgba(255, 228, 238, 0.84);
 }
 
 .button,
@@ -2273,6 +2432,12 @@ textarea::placeholder {
 
   .topbar-meta {
     justify-content: flex-start;
+  }
+
+  .topbar-menu-panel {
+    left: 0;
+    right: auto;
+    min-width: min(280px, calc(100vw - 40px));
   }
 
   .search-form {

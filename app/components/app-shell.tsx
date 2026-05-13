@@ -9,9 +9,12 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/cultivation", label: "Cultivation" },
   { href: "/people", label: "People" },
-  { href: "/review-queue", label: "Review Queue" },
-  { href: "/mappings", label: "Mappings" },
-  { href: "/manual", label: "Manual" }
+  { href: "/review-queue", label: "Review Queue" }
+] as const satisfies ReadonlyArray<{ href: Route; label: string }>;
+
+const ADMIN_ITEMS = [
+  { href: "/manual", label: "Manual" },
+  { href: "/mappings", label: "Mappings" }
 ] as const satisfies ReadonlyArray<{ href: Route; label: string }>;
 
 export function AppShell({
@@ -40,10 +43,40 @@ export function AppShell({
               {item.label}
             </Link>
           ))}
-          <BackfillControl variant="compact" />
         </nav>
 
         <div className="topbar-meta">
+          <details className="topbar-menu">
+            <summary className="topbar-menu-trigger" aria-label="Open tools menu">
+              <span className="topbar-menu-icon" aria-hidden="true">
+                ☰
+              </span>
+              <span>Tools</span>
+            </summary>
+
+            <div className="topbar-menu-panel">
+              <div className="topbar-menu-section">
+                <span className="topbar-menu-label">Pages</span>
+                <div className="topbar-menu-links">
+                  {ADMIN_ITEMS.map((item) => (
+                    <Link
+                      key={item.href}
+                      className={`topbar-menu-link${currentPath === item.href ? " active" : ""}`}
+                      href={item.href}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+
+              <div className="topbar-menu-section topbar-menu-section-danger">
+                <span className="topbar-menu-label">Data tools</span>
+                <BackfillControl variant="compact" />
+              </div>
+            </div>
+          </details>
+
           {!config.hasDatabase ? <span className="status-pill">Demo data mode</span> : null}
           <span className="status-pill">{session.name}</span>
           <form action="/api/auth/logout" method="post">
