@@ -2284,7 +2284,7 @@ export async function getDashboardData(
         })
       ),
       "LAST_INTERACTION"
-    ).slice(0, 8);
+    );
   }
 
   return {
