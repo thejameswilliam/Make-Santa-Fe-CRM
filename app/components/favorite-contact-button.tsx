@@ -8,12 +8,16 @@ export function FavoriteContactButton({
   contactId,
   initialIsFavorite,
   className = "",
-  title
+  title,
+  refreshOnSuccess = true,
+  onFavoriteChange
 }: {
   contactId: string;
   initialIsFavorite: boolean;
   className?: string;
   title?: string;
+  refreshOnSuccess?: boolean;
+  onFavoriteChange?: (isFavorite: boolean) => void;
 }) {
   const router = useRouter();
   const [isFavorite, setIsFavorite] = useState(initialIsFavorite);
@@ -57,9 +61,12 @@ export function FavoriteContactButton({
       }
 
       setIsFavorite(payload.isFavorite);
-      startTransition(() => {
-        router.refresh();
-      });
+      onFavoriteChange?.(payload.isFavorite);
+      if (refreshOnSuccess) {
+        startTransition(() => {
+          router.refresh();
+        });
+      }
     } catch (nextError) {
       setIsFavorite(!nextValue);
       setError(nextError instanceof Error ? nextError.message : "Could not update favorite state.");

@@ -317,6 +317,34 @@ export function PeopleSearch({
     }
   }
 
+  function handleFavoriteChange(contactId: string, isFavorite: boolean) {
+    const cacheKey = buildPeopleCacheKey({
+      query: deferredQuery.trim(),
+      laneFilter,
+      sortBy,
+      includeInactive
+    });
+
+    setContacts((current) => {
+      const nextContacts = current.map((contact) =>
+        contact.id === contactId
+          ? {
+              ...contact,
+              isFavorite
+            }
+          : contact
+      );
+
+      writeStoredPeopleCache(cacheKey, {
+        contacts: nextContacts,
+        hasMore,
+        savedAt: Date.now()
+      });
+
+      return nextContacts;
+    });
+  }
+
   const trimmedQuery = query.trim();
   const showMinimumMessage = trimmedQuery.length > 0 && trimmedQuery.length < 3;
 
@@ -400,7 +428,14 @@ export function PeopleSearch({
               {showMinimumMessage ? "Search starts after 3 characters." : "No contacts matched this search yet."}
             </div>
           ) : (
-            contacts.map((contact) => <ContactCard contact={contact} key={contact.id} />)
+            contacts.map((contact) => (
+              <ContactCard
+                contact={contact}
+                favoriteRefreshOnSuccess={false}
+                key={contact.id}
+                onFavoriteChange={handleFavoriteChange}
+              />
+            ))
           )}
         </div>
 

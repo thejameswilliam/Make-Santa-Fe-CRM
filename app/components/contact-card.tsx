@@ -29,10 +29,14 @@ function buildCardAccentPillStyle(color: string) {
 
 export function ContactCard({
   contact,
-  eyebrow = "Primary record"
+  eyebrow = "Primary record",
+  onFavoriteChange,
+  favoriteRefreshOnSuccess = true
 }: {
   contact: ContactListItem;
   eyebrow?: string;
+  onFavoriteChange?: (contactId: string, isFavorite: boolean) => void;
+  favoriteRefreshOnSuccess?: boolean;
 }) {
   return (
     <article className={`contact-card contact-card-rich${contact.isActive ? "" : " contact-card-inactive"}`}>
@@ -41,6 +45,8 @@ export function ContactCard({
           className="contact-card-favorite-button"
           contactId={contact.id}
           initialIsFavorite={contact.isFavorite}
+          onFavoriteChange={(isFavorite) => onFavoriteChange?.(contact.id, isFavorite)}
+          refreshOnSuccess={favoriteRefreshOnSuccess}
         />
       </div>
 
