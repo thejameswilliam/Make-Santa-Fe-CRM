@@ -28,14 +28,25 @@ export async function POST(
     ? payload?.createContact === true
     : String(formData?.get("createContact") ?? "") === "true";
 
-  const result = await assignUnmatchedEvent({
-    unmatchedEventId: eventId,
-    contactId: contactId || null,
-    createContact
-  });
+  try {
+    const result = await assignUnmatchedEvent({
+      unmatchedEventId: eventId,
+      contactId: contactId || null,
+      createContact
+    });
 
-  if (isJson) {
-    return NextResponse.json(result);
+    if (isJson) {
+      return NextResponse.json(result);
+    }
+  } catch (error) {
+    if (isJson) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "Could not resolve that queue item."
+        },
+        { status: 400 }
+      );
+    }
   }
 
   return redirectFromRequest(request, returnTo);

@@ -60,26 +60,30 @@ export default async function ManualPage() {
       <section className="split-grid">
         <section className="panel">
           <div>
-            <span className="eyebrow">Review queue</span>
-            <h2 className="section-title">What to do there</h2>
+            <span className="eyebrow">Donation review</span>
+            <h2 className="section-title">Unattached interactions</h2>
           </div>
 
           <div className="surface-list">
             <div className="surface-row">
-              <strong>Change the event type if needed.</strong>
-              <p className="muted">The event-type selector updates the record before assignment. `Class attendance` means a person attended or was tracked against a class. It does not mean class purchase. Class purchases stay under purchase activity.</p>
+              <strong>Add unattached interaction</strong>
+              <p className="muted">Use the intake form to log donations or other manual interactions when you do not want to attach them to a person record yet.</p>
+            </div>
+            <div className="surface-row">
+              <strong>Adjust classification if needed.</strong>
+              <p className="muted">Imported unmatched items can be retyped with review event types. Manual unattached items use the manual interaction type catalog instead.</p>
             </div>
             <div className="surface-row">
               <strong>Assign to an existing contact</strong>
-              <p className="muted">Search by email, select the correct contact, and assign without leaving the page.</p>
+              <p className="muted">Search for the correct person and assign without leaving the page. Imported unmatched items become timeline events; manual unattached items become manual interactions.</p>
             </div>
             <div className="surface-row">
               <strong>Create new contact</strong>
-              <p className="muted">Use this when the imported email clearly belongs to a new person. Matching pending items with that same email are assigned at the same time.</p>
+              <p className="muted">Use this when the unattached interaction belongs to a person who does not exist in the CRM yet. Available identity hints seed the new contact record.</p>
             </div>
             <div className="surface-row">
-              <strong>Dismiss event</strong>
-              <p className="muted">Use this when an imported item should not be retained in reporting or history.</p>
+              <strong>Dismiss item</strong>
+              <p className="muted">Use this when an imported or manually entered queue item should not be retained in reporting or history.</p>
             </div>
           </div>
         </section>

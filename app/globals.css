@@ -501,6 +501,24 @@ textarea::placeholder {
   transition: opacity 220ms ease, transform 220ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
+.review-intake-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.review-intake-form {
+  display: grid;
+  gap: 14px;
+}
+
+.review-intake-grid {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.review-intake-actions {
+  align-items: center;
+}
+
 .review-card.is-busy {
   border-color: rgba(255, 77, 77, 0.18);
 }
@@ -530,6 +548,13 @@ textarea::placeholder {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.review-card-title-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .review-card-source {
@@ -573,6 +598,18 @@ textarea::placeholder {
   white-space: nowrap;
 }
 
+.review-card-amount {
+  background: rgba(255, 79, 216, 0.16);
+  color: #fff;
+  border-color: rgba(255, 79, 216, 0.24);
+}
+
+.review-card-summary {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .review-card-reason {
   display: flex;
   gap: 8px;
@@ -601,6 +638,10 @@ textarea::placeholder {
 }
 
 .review-card-email {
+  font-size: 0.8rem;
+}
+
+.review-card-meta-item {
   font-size: 0.8rem;
 }
 

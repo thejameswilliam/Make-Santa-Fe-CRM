@@ -25,23 +25,39 @@ export async function POST(
       ? payload.reviewEventTypeKey
       : ""
     : String(formData?.get("reviewEventTypeKey") ?? "")) as ReviewEventTypeKey;
+  const manualInteractionTypeId = isJson
+    ? typeof payload?.manualInteractionTypeId === "string"
+      ? payload.manualInteractionTypeId
+      : ""
+    : String(formData?.get("manualInteractionTypeId") ?? "");
   const returnTo = String(formData?.get("returnTo") ?? "/review-queue");
-  const eventType = findReviewEventTypeByKey(reviewEventTypeKey);
+  const eventType = manualInteractionTypeId ? null : findReviewEventTypeByKey(reviewEventTypeKey);
 
-  if (!eventType) {
+  if (!manualInteractionTypeId && !eventType) {
     return isJson
       ? NextResponse.json({ error: "Interaction type not found." }, { status: 400 })
       : redirectFromRequest(request, returnTo);
   }
 
-  await updateUnmatchedEventClassification(eventId, reviewEventTypeKey);
-
-  if (isJson) {
-    return NextResponse.json({
-      reviewEventTypeKey: eventType.key,
-      laneKey: eventType.laneKey,
-      eventKind: eventType.eventKind
+  try {
+    const result = await updateUnmatchedEventClassification({
+      unmatchedEventId: eventId,
+      reviewEventTypeKey: manualInteractionTypeId ? null : reviewEventTypeKey,
+      manualInteractionTypeId: manualInteractionTypeId || null
     });
+
+    if (isJson) {
+      return NextResponse.json(result);
+    }
+  } catch (error) {
+    if (isJson) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "Could not update that queue item."
+        },
+        { status: 400 }
+      );
+    }
   }
 
   return redirectFromRequest(request, returnTo);

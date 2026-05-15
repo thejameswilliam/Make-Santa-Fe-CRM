@@ -385,6 +385,25 @@ export const demoContactDetail: ContactDetail = {
 
 export const demoReviewQueue: ReviewQueueItem[] = [
   {
+    id: "unmatched-manual-1",
+    source: "MANUAL",
+    title: "Check donation at front desk",
+    summary: "Received by staff during walk-in support hours and not attached yet.",
+    occurredAt: "2026-05-08T21:10:00.000Z",
+    amountLabel: "$125.00",
+    candidateEmail: null,
+    fullName: "Pat Doe",
+    phone: "505-555-0199",
+    address: "123 Example St",
+    reason: "Manually entered unattached interaction.",
+    laneKey: "DONOR",
+    eventKind: "donation",
+    reviewEventTypeKey: "DONATION",
+    manualInteractionTypeId: "donation",
+    manualInteractionTypeName: "Donation",
+    manualInteractionTypeSlug: "donation"
+  },
+  {
     id: "unmatched-1",
     source: "NEWSLETTER",
     title: "Tool library campaign",

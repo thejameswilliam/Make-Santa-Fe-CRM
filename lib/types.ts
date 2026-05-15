@@ -226,13 +226,32 @@ export interface ReviewQueueItem {
   title: string;
   summary: string | null;
   occurredAt: string;
+  amountLabel?: string | null;
   candidateEmail: string | null;
+  fullName?: string | null;
+  phone?: string | null;
+  address?: string | null;
   reason: string;
   laneKey: LaneKey | null;
   eventKind: string | null;
   reviewEventTypeKey: ReviewEventTypeKey | null;
+  manualInteractionTypeId?: string | null;
+  manualInteractionTypeName?: string | null;
+  manualInteractionTypeSlug?: string | null;
   sourceAdminUrl?: string | null;
   sourceAdminLabel?: string | null;
+}
+
+export interface ReviewQueueInteractionTypeOption {
+  id: string;
+  name: string;
+  slug: string;
+  laneKey: LaneKey;
+}
+
+export interface ReviewQueuePageData {
+  items: ReviewQueueItem[];
+  interactionTypeOptions: ReviewQueueInteractionTypeOption[];
 }
 
 export interface MappingRuleView {

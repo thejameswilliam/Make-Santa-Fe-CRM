@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/cultivation", label: "Cultivation" },
   { href: "/people", label: "People" },
-  { href: "/review-queue", label: "Review Queue" }
+  { href: "/review-queue", label: "Donation Review" }
 ] as const satisfies ReadonlyArray<{ href: Route; label: string }>;
 
 const ADMIN_ITEMS = [

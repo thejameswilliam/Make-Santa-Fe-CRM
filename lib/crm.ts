@@ -54,6 +54,8 @@ import type {
   MetricSection,
   PriorityDonorItem,
   LapsedDonorItem,
+  ReviewQueueInteractionTypeOption,
+  ReviewQueuePageData,
   ReviewQueueItem,
   SessionUser,
   TimelineEntry,
@@ -180,6 +182,86 @@ async function createContactWithPrimaryEmailTx(
   });
 
   return contact.id;
+}
+
+async function createManualContactTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    displayName: string;
+    email?: string | null;
+    phone?: string | null;
+    address?: string | null;
+  },
+  occurredAt: Date
+) {
+  const displayName = input.displayName.trim();
+  if (!displayName) {
+    throw new Error("Full name is required.");
+  }
+
+  const email = input.email?.trim() ?? "";
+  const normalizedEmail = email ? normalizeEmail(email) : null;
+  if (email && !normalizedEmail) {
+    throw new Error("A valid email address is required.");
+  }
+
+  const phone = input.phone?.trim() ?? "";
+  const address = input.address?.trim() ?? "";
+
+  let contactId: string;
+
+  if (email) {
+    const existingEmail = await tx.contactEmail.findUnique({
+      where: { normalizedEmail: normalizedEmail! },
+      select: {
+        contactId: true
+      }
+    });
+
+    if (existingEmail?.contactId) {
+      contactId = existingEmail.contactId;
+
+      const existingContact = await tx.contact.findUnique({
+        where: { id: contactId },
+        select: { displayName: true }
+      });
+
+      const currentDisplayName = existingContact?.displayName?.trim() ?? "";
+      if (!currentDisplayName || normalizeEmail(currentDisplayName) === normalizedEmail) {
+        await tx.contact.update({
+          where: { id: contactId },
+          data: { displayName }
+        });
+      }
+    } else {
+      contactId = await createContactWithPrimaryEmailTx(tx, {
+        email,
+        displayName,
+        source: PrismaSourceSystem.MANUAL
+      });
+    }
+  } else {
+    const contact = await tx.contact.create({
+      data: {
+        displayName
+      }
+    });
+
+    contactId = contact.id;
+  }
+
+  await persistProfileValues(tx, {
+    contactId,
+    source: PrismaSourceSystem.MANUAL,
+    profile: {
+      fullName: displayName,
+      phone: phone || null,
+      address: address || null
+    },
+    occurredAt
+  });
+
+  return contactId;
 }
 
 async function importUnmatchedEventToContact(
@@ -355,7 +437,7 @@ function metric(
   };
 }
 
-function toJsonRecord(value: Prisma.JsonValue | null | undefined) {
+function toJsonRecord(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -454,6 +536,128 @@ function formatAmountCentsAsInputValue(amountCents?: number | null) {
   }
 
   return (amountCents / 100).toFixed(2);
+}
+
+function readRecordStringValue(record: Record<string, unknown> | null | undefined, key: string) {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function buildManualQueueRawPayload(input: {
+  title: string;
+  summary: string | null;
+  amountCents: number | null;
+  currency: string;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  interactionTypeId: string;
+  interactionTypeName: string;
+  interactionTypeSlug: string;
+  createdByUserId?: string | null;
+  createdByName?: string | null;
+}) {
+  return {
+    title: input.title,
+    summary: input.summary,
+    amountCents: input.amountCents,
+    currency: input.currency,
+    candidateEmail: input.email,
+    profile: {
+      fullName: input.fullName,
+      phone: input.phone,
+      address: input.address
+    },
+    manualInteraction: {
+      interactionTypeId: input.interactionTypeId,
+      interactionTypeName: input.interactionTypeName,
+      interactionTypeSlug: input.interactionTypeSlug,
+      createdByUserId: input.createdByUserId ?? null,
+      createdByName: input.createdByName ?? null
+    }
+  };
+}
+
+function buildManualQueueMetadata(input: {
+  title: string;
+  summary: string | null;
+  amountCents: number | null;
+  currency: string;
+  fullName: string | null;
+  phone: string | null;
+  address: string | null;
+  interactionTypeId: string;
+  interactionTypeName: string;
+  interactionTypeSlug: string;
+  createdByUserId?: string | null;
+  createdByName?: string | null;
+}) {
+  return {
+    title: input.title,
+    summary: input.summary,
+    amountCents: input.amountCents,
+    currency: input.currency,
+    fullName: input.fullName,
+    phone: input.phone,
+    address: input.address,
+    manualInteractionTypeId: input.interactionTypeId,
+    manualInteractionTypeName: input.interactionTypeName,
+    manualInteractionTypeSlug: input.interactionTypeSlug,
+    createdByUserId: input.createdByUserId ?? null,
+    createdByName: input.createdByName ?? null
+  };
+}
+
+function mapUnmatchedEventToReviewQueueItem(item: {
+  id: string;
+  source: PrismaSourceSystem;
+  metadata: Prisma.JsonValue;
+  rawPayload: Prisma.JsonValue;
+  title?: string | null;
+  summary?: string | null;
+  occurredAt: Date;
+  candidateEmail: string | null;
+  reason: string;
+  laneKey: PrismaLaneKey | null;
+  eventKind: string | null;
+}) {
+  const metadata = (item.metadata as Record<string, unknown> | null) ?? {};
+  const rawPayload = (item.rawPayload as Record<string, unknown> | null) ?? {};
+  const sourceLink = buildWordPressSourceLink({
+    source: item.source as SourceSystemKey,
+    eventKind: item.eventKind ?? "manual_assignment",
+    metadata,
+    rawPayload,
+    labelMode: "reference"
+  });
+
+  return {
+    id: item.id,
+    source: item.source as SourceSystemKey,
+    title:
+      decodeHtmlEntities(
+        typeof metadata.title === "string" ? metadata.title : item.title ?? "Unattached interaction"
+      ) ?? "Unattached interaction",
+    summary: decodeHtmlEntities(
+      typeof metadata.summary === "string" ? metadata.summary : item.summary ?? null
+    ),
+    occurredAt: item.occurredAt.toISOString(),
+    amountLabel: formatCurrency(readAmountCentsFromMetadata(item.metadata), "USD"),
+    candidateEmail: item.candidateEmail,
+    fullName: readRecordStringValue(metadata, "fullName"),
+    phone: readRecordStringValue(metadata, "phone"),
+    address: readRecordStringValue(metadata, "address"),
+    reason: item.reason,
+    laneKey: item.laneKey as LaneKey | null,
+    eventKind: item.eventKind,
+    reviewEventTypeKey: findReviewEventType(item.eventKind, item.laneKey as LaneKey | null)?.key ?? null,
+    manualInteractionTypeId: readRecordStringValue(metadata, "manualInteractionTypeId"),
+    manualInteractionTypeName: readRecordStringValue(metadata, "manualInteractionTypeName"),
+    manualInteractionTypeSlug: readRecordStringValue(metadata, "manualInteractionTypeSlug"),
+    sourceAdminUrl: sourceLink?.url ?? null,
+    sourceAdminLabel: sourceLink?.label ?? null
+  } satisfies ReviewQueueItem;
 }
 
 function formatCount(value: number) {
@@ -2934,48 +3138,145 @@ export async function updateCultivationWorkflow(input: {
   };
 }
 
-export async function getReviewQueueItems(): Promise<ReviewQueueItem[]> {
+export async function getReviewQueuePageData(): Promise<ReviewQueuePageData> {
   if (!prisma) {
-    return demoReviewQueue;
+    return {
+      items: demoReviewQueue,
+      interactionTypeOptions: demoMappingsData.interactionTypes.map((type) => ({
+        id: type.id,
+        name: type.name,
+        slug: type.slug,
+        laneKey: type.laneKey
+      }))
+    };
   }
 
+  await ensureCatalogSeeded();
+
   const db = assertDatabase();
-  const items = await db.unmatchedEvent.findMany({
-    where: {
-      status: ReviewStatus.PENDING
-    },
-    orderBy: {
-      occurredAt: "desc"
-    },
-    take: 100
+  const [items, interactionTypes] = await Promise.all([
+    db.unmatchedEvent.findMany({
+      where: {
+        status: ReviewStatus.PENDING
+      },
+      orderBy: {
+        occurredAt: "desc"
+      },
+      take: 100
+    }),
+    db.interactionType.findMany({
+      where: {
+        isActive: true
+      },
+      orderBy: { name: "asc" }
+    })
+  ]);
+
+  return {
+    items: items.map((item) => mapUnmatchedEventToReviewQueueItem(item)),
+    interactionTypeOptions: interactionTypes.map((type) => ({
+      id: type.id,
+      name: type.name,
+      slug: type.slug,
+      laneKey: type.laneKey as LaneKey
+    }))
+  };
+}
+
+export async function createManualReviewQueueItem(input: {
+  interactionTypeId: string;
+  occurredAt: string;
+  title: string;
+  body?: string | null;
+  amountValue?: string | null;
+  fullName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  actor?: SessionUser | null;
+}) {
+  const db = assertDatabase();
+  const interactionType = await db.interactionType.findUnique({
+    where: { id: input.interactionTypeId }
   });
 
-  return items.map((item) => {
-    const metadata = (item.metadata as Record<string, unknown> | null) ?? {};
-    const rawPayload = (item.rawPayload as Record<string, unknown> | null) ?? {};
-    const sourceLink = buildWordPressSourceLink({
-      source: item.source as SourceSystemKey,
-      eventKind: item.eventKind ?? "manual_assignment",
-      metadata,
-      rawPayload,
-      labelMode: "reference"
-    });
+  if (!interactionType) {
+    throw new Error("Interaction type not found.");
+  }
 
-    return {
-      id: item.id,
-      source: item.source as SourceSystemKey,
-      title: decodeHtmlEntities(typeof metadata.title === "string" ? metadata.title : "Unmatched interaction") ?? "Unmatched interaction",
-      summary: decodeHtmlEntities(typeof metadata.summary === "string" ? metadata.summary : null),
-      occurredAt: item.occurredAt.toISOString(),
-      candidateEmail: item.candidateEmail,
-      reason: item.reason,
-      laneKey: item.laneKey as LaneKey | null,
-      eventKind: item.eventKind,
-      reviewEventTypeKey: findReviewEventType(item.eventKind, item.laneKey as LaneKey | null)?.key ?? null,
-      sourceAdminUrl: sourceLink?.url ?? null,
-      sourceAdminLabel: sourceLink?.label ?? null
-    };
+  const title = input.title.trim();
+  if (!title) {
+    throw new Error("Title is required.");
+  }
+
+  const occurredAt = new Date(input.occurredAt);
+  if (Number.isNaN(occurredAt.getTime())) {
+    throw new Error("Date and time are invalid.");
+  }
+
+  const amountCents = parseCurrencyAmountToCents(input.amountValue ?? null);
+  if (interactionType.slug === "donation" && (!amountCents || amountCents <= 0)) {
+    throw new Error("Donation amount is required.");
+  }
+
+  const candidateEmail = input.email?.trim() || null;
+  const normalizedEmail = candidateEmail ? normalizeEmail(candidateEmail) : null;
+  if (candidateEmail && !normalizedEmail) {
+    throw new Error("A valid email address is required.");
+  }
+
+  const summary = input.body?.trim() || null;
+  const fullName = input.fullName?.trim() || null;
+  const phone = input.phone?.trim() || null;
+  const address = input.address?.trim() || null;
+  const rawPayload = buildManualQueueRawPayload({
+    title,
+    summary,
+    amountCents,
+    currency: "USD",
+    fullName,
+    email: candidateEmail,
+    phone,
+    address,
+    interactionTypeId: interactionType.id,
+    interactionTypeName: interactionType.name,
+    interactionTypeSlug: interactionType.slug,
+    createdByUserId: input.actor?.id ?? null,
+    createdByName: input.actor?.name ?? null
   });
+  const metadata = buildManualQueueMetadata({
+    title,
+    summary,
+    amountCents,
+    currency: "USD",
+    fullName,
+    phone,
+    address,
+    interactionTypeId: interactionType.id,
+    interactionTypeName: interactionType.name,
+    interactionTypeSlug: interactionType.slug,
+    createdByUserId: input.actor?.id ?? null,
+    createdByName: input.actor?.name ?? null
+  });
+
+  const created = await db.unmatchedEvent.create({
+    data: {
+      source: PrismaSourceSystem.MANUAL,
+      sourceEventId: `manual-review-${crypto.randomUUID()}`,
+      sourceCursor: null,
+      occurredAt,
+      eventKind: interactionType.slug,
+      laneKey: interactionType.laneKey,
+      candidateEmail,
+      normalizedEmail,
+      status: ReviewStatus.PENDING,
+      reason: "Manually entered unattached interaction.",
+      rawPayload: toInputJson(rawPayload),
+      metadata: toInputJson(metadata)
+    }
+  });
+
+  return mapUnmatchedEventToReviewQueueItem(created);
 }
 
 export async function dismissUnmatchedEvent(unmatchedEventId: string) {
@@ -3000,32 +3301,85 @@ export async function dismissUnmatchedEvent(unmatchedEventId: string) {
   });
 }
 
-export async function updateUnmatchedEventClassification(
-  unmatchedEventId: string,
-  reviewEventTypeKey: ReviewEventTypeKey
-) {
+export async function updateUnmatchedEventClassification(input: {
+  unmatchedEventId: string;
+  reviewEventTypeKey?: ReviewEventTypeKey | null;
+  manualInteractionTypeId?: string | null;
+}) {
   const db = assertDatabase();
-  const eventType = findReviewEventTypeByKey(reviewEventTypeKey);
-  if (!eventType) {
-    throw new Error("Review queue event type not found.");
-  }
-
   const unmatched = await db.unmatchedEvent.findUnique({
-    where: { id: unmatchedEventId },
-    select: { id: true }
+    where: { id: input.unmatchedEventId },
+    select: {
+      id: true,
+      source: true,
+      metadata: true
+    }
   });
 
   if (!unmatched) {
     throw new Error("Review queue item not found.");
   }
 
+  if (input.manualInteractionTypeId) {
+    if (unmatched.source !== PrismaSourceSystem.MANUAL) {
+      throw new Error("Only manual queue items can use manual interaction types.");
+    }
+
+    const interactionType = await db.interactionType.findUnique({
+      where: { id: input.manualInteractionTypeId }
+    });
+
+    if (!interactionType) {
+      throw new Error("Interaction type not found.");
+    }
+
+    const nextAmountCents = readAmountCentsFromMetadata(unmatched.metadata);
+    if (interactionType.slug === "donation" && (!nextAmountCents || nextAmountCents <= 0)) {
+      throw new Error("Donation amount is required before classifying this item as a donation.");
+    }
+
+    const metadataRecord = toJsonRecord(unmatched.metadata);
+    await db.unmatchedEvent.update({
+      where: { id: input.unmatchedEventId },
+      data: {
+        eventKind: interactionType.slug,
+        laneKey: interactionType.laneKey,
+        metadata: toInputJson({
+          ...(metadataRecord ?? {}),
+          manualInteractionTypeId: interactionType.id,
+          manualInteractionTypeName: interactionType.name,
+          manualInteractionTypeSlug: interactionType.slug
+        })
+      }
+    });
+
+    return {
+      eventKind: interactionType.slug,
+      laneKey: interactionType.laneKey as LaneKey,
+      manualInteractionTypeId: interactionType.id,
+      manualInteractionTypeName: interactionType.name,
+      manualInteractionTypeSlug: interactionType.slug
+    };
+  }
+
+  const eventType = findReviewEventTypeByKey(input.reviewEventTypeKey ?? null);
+  if (!eventType) {
+    throw new Error("Review queue event type not found.");
+  }
+
   await db.unmatchedEvent.update({
-    where: { id: unmatchedEventId },
+    where: { id: input.unmatchedEventId },
     data: {
       eventKind: eventType.eventKind,
       laneKey: eventType.laneKey as PrismaLaneKey
     }
   });
+
+  return {
+    reviewEventTypeKey: eventType.key,
+    laneKey: eventType.laneKey,
+    eventKind: eventType.eventKind
+  };
 }
 
 export async function getMappingsScreenData(): Promise<MappingScreenData> {
@@ -3085,78 +3439,9 @@ export async function createManualContact(input: {
   phone?: string | null;
   address?: string | null;
 }) {
-  const displayName = input.displayName.trim();
-  if (!displayName) {
-    throw new Error("Full name is required.");
-  }
-
-  const email = input.email?.trim() ?? "";
-  const normalizedEmail = email ? normalizeEmail(email) : null;
-  if (email && !normalizedEmail) {
-    throw new Error("A valid email address is required.");
-  }
-
-  const phone = input.phone?.trim() ?? "";
-  const address = input.address?.trim() ?? "";
   const occurredAt = new Date();
   const db = assertDatabase();
-
-  const contactId = await db.$transaction(async (tx) => {
-    let contactId: string;
-
-    if (email) {
-      const existingEmail = await tx.contactEmail.findUnique({
-        where: { normalizedEmail: normalizedEmail! },
-        select: {
-          contactId: true
-        }
-      });
-
-      if (existingEmail?.contactId) {
-        contactId = existingEmail.contactId;
-
-        const existingContact = await tx.contact.findUnique({
-          where: { id: contactId },
-          select: { displayName: true }
-        });
-
-        const currentDisplayName = existingContact?.displayName?.trim() ?? "";
-        if (!currentDisplayName || normalizeEmail(currentDisplayName) === normalizedEmail) {
-          await tx.contact.update({
-            where: { id: contactId },
-            data: { displayName }
-          });
-        }
-      } else {
-        contactId = await createContactWithPrimaryEmailTx(tx, {
-          email,
-          displayName,
-          source: PrismaSourceSystem.MANUAL
-        });
-      }
-    } else {
-      const contact = await tx.contact.create({
-        data: {
-          displayName
-        }
-      });
-
-      contactId = contact.id;
-    }
-
-    await persistProfileValues(tx, {
-      contactId,
-      source: PrismaSourceSystem.MANUAL,
-      profile: {
-        fullName: displayName,
-        phone: phone || null,
-        address: address || null
-      },
-      occurredAt
-    });
-
-    return contactId;
-  });
+  const contactId = await db.$transaction((tx) => createManualContactTx(tx, input, occurredAt));
 
   await refreshContactListSummaries([contactId], db);
   return contactId;
@@ -3985,15 +4270,7 @@ export async function assignUnmatchedEvent(input: {
       unmatched.normalizedEmail ?? normalizeEmail(unmatched.candidateEmail);
     let contactId = input.contactId ?? null;
     if (input.createContact) {
-      if (!unmatched.candidateEmail) {
-        throw new Error("Cannot create a contact without a usable email address.");
-      }
-
-      contactId = await createContactWithPrimaryEmailTx(tx, {
-        email: unmatched.candidateEmail,
-        displayName: deriveDisplayNameFromUnmatched(unmatched),
-        source: PrismaSourceSystem.MANUAL
-      });
+      contactId = await createContactFromUnmatchedTx(tx, unmatched);
     }
 
     if (!contactId) {
@@ -4015,26 +4292,30 @@ export async function assignUnmatchedEvent(input: {
     const resolvedUnmatchedEventIds = eventsToAssign.map((event) => event.id);
 
     for (const event of eventsToAssign) {
-      if (event.candidateEmail && event.normalizedEmail) {
-        const existingEmail = await tx.contactEmail.findUnique({
-          where: {
-            normalizedEmail: event.normalizedEmail
-          }
-        });
-
-        if (!existingEmail) {
-          await tx.contactEmail.create({
-            data: {
-              contactId,
-              email: event.candidateEmail,
-              normalizedEmail: event.normalizedEmail,
-              source: PrismaSourceSystem.MANUAL
+      if (event.source === PrismaSourceSystem.MANUAL) {
+        await assignManualUnmatchedEventToContact(tx, event, contactId);
+      } else {
+        if (event.candidateEmail && event.normalizedEmail) {
+          const existingEmail = await tx.contactEmail.findUnique({
+            where: {
+              normalizedEmail: event.normalizedEmail
             }
           });
-        }
-      }
 
-      await importUnmatchedEventToContact(tx, event, contactId);
+          if (!existingEmail) {
+            await tx.contactEmail.create({
+              data: {
+                contactId,
+                email: event.candidateEmail,
+                normalizedEmail: event.normalizedEmail,
+                source: PrismaSourceSystem.MANUAL
+              }
+            });
+          }
+        }
+
+        await importUnmatchedEventToContact(tx, event, contactId);
+      }
     }
 
     return {
@@ -4052,14 +4333,211 @@ export async function assignUnmatchedEvent(input: {
 
 function deriveDisplayNameFromUnmatched(unmatched: {
   candidateEmail: string | null;
+  rawPayload: unknown;
   metadata: unknown;
 }) {
-  const metadata = (unmatched.metadata as Record<string, unknown> | null) ?? {};
-  if (typeof metadata.fullName === "string" && metadata.fullName.trim()) {
-    return metadata.fullName.trim();
+  const hints = readUnmatchedIdentityHints(unmatched);
+
+  return (
+    hints.fullName ??
+    unmatched.candidateEmail ??
+    hints.phone ??
+    hints.address ??
+    hints.title ??
+    "New contact"
+  );
+}
+
+function readUnmatchedIdentityHints(unmatched: {
+  candidateEmail: string | null;
+  rawPayload: unknown;
+  metadata: unknown;
+}) {
+  const metadata = toJsonRecord(unmatched.metadata);
+  const rawPayload = toJsonRecord(unmatched.rawPayload);
+  const rawProfile = toJsonRecord(rawPayload?.profile);
+  const manualInteraction = toJsonRecord(rawPayload?.manualInteraction);
+
+  return {
+    fullName:
+      readRecordStringValue(metadata, "fullName") ?? readRecordStringValue(rawProfile, "fullName"),
+    email: unmatched.candidateEmail ?? readRecordStringValue(rawPayload, "candidateEmail"),
+    phone:
+      readRecordStringValue(metadata, "phone") ?? readRecordStringValue(rawProfile, "phone"),
+    address:
+      readRecordStringValue(metadata, "address") ?? readRecordStringValue(rawProfile, "address"),
+    title:
+      readRecordStringValue(metadata, "title") ?? readRecordStringValue(rawPayload, "title"),
+    summary:
+      readRecordStringValue(metadata, "summary") ?? readRecordStringValue(rawPayload, "summary"),
+    manualInteractionTypeId:
+      readRecordStringValue(metadata, "manualInteractionTypeId") ??
+      readRecordStringValue(manualInteraction, "interactionTypeId"),
+    createdByUserId:
+      readRecordStringValue(metadata, "createdByUserId") ??
+      readRecordStringValue(manualInteraction, "createdByUserId"),
+    createdByName:
+      readRecordStringValue(metadata, "createdByName") ??
+      readRecordStringValue(manualInteraction, "createdByName")
+  };
+}
+
+async function createContactFromUnmatchedTx(
+  tx: Prisma.TransactionClient,
+  unmatched: {
+    candidateEmail: string | null;
+    rawPayload: unknown;
+    metadata: unknown;
+    occurredAt: Date;
+  }
+) {
+  const hints = readUnmatchedIdentityHints(unmatched);
+
+  if (!hints.email && !hints.fullName && !hints.phone && !hints.address) {
+    throw new Error("Cannot create a contact without at least a name, email, phone, or address.");
   }
 
-  return unmatched.candidateEmail ?? "New contact";
+  return createManualContactTx(
+    tx,
+    {
+      displayName: deriveDisplayNameFromUnmatched(unmatched),
+      email: hints.email,
+      phone: hints.phone,
+      address: hints.address
+    },
+    unmatched.occurredAt
+  );
+}
+
+async function persistManualQueueIdentityToContactTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    contactId: string;
+    unmatched: {
+      candidateEmail: string | null;
+      normalizedEmail: string | null;
+      rawPayload: unknown;
+      metadata: unknown;
+      occurredAt: Date;
+    };
+  }
+) {
+  const hints = readUnmatchedIdentityHints(input.unmatched);
+  const normalizedEmail =
+    input.unmatched.normalizedEmail ?? normalizeEmail(hints.email ?? input.unmatched.candidateEmail);
+
+  if (hints.email && normalizedEmail) {
+    const existingEmail = await tx.contactEmail.findUnique({
+      where: {
+        normalizedEmail
+      },
+      select: {
+        contactId: true
+      }
+    });
+
+    if (!existingEmail) {
+      await tx.contactEmail.create({
+        data: {
+          contactId: input.contactId,
+          email: hints.email,
+          normalizedEmail,
+          source: PrismaSourceSystem.MANUAL
+        }
+      });
+    }
+  }
+
+  if (hints.fullName || hints.phone || hints.address) {
+    await persistProfileValues(tx, {
+      contactId: input.contactId,
+      source: PrismaSourceSystem.MANUAL,
+      profile: {
+        fullName: hints.fullName,
+        phone: hints.phone,
+        address: hints.address
+      },
+      occurredAt: input.unmatched.occurredAt
+    });
+  }
+}
+
+async function assignManualUnmatchedEventToContact(
+  tx: Prisma.TransactionClient,
+  unmatched: {
+    id: string;
+    source: PrismaSourceSystem;
+    sourceEventId: string;
+    occurredAt: Date;
+    eventKind: string | null;
+    candidateEmail: string | null;
+    normalizedEmail: string | null;
+    metadata: Prisma.JsonValue;
+    rawPayload: Prisma.JsonValue;
+  },
+  contactId: string
+) {
+  const hints = readUnmatchedIdentityHints(unmatched);
+  let interactionType = hints.manualInteractionTypeId
+    ? await tx.interactionType.findUnique({
+        where: {
+          id: hints.manualInteractionTypeId
+        }
+      })
+    : null;
+
+  if (!interactionType && unmatched.eventKind) {
+    interactionType = await tx.interactionType.findUnique({
+      where: {
+        slug: unmatched.eventKind
+      }
+    });
+  }
+
+  if (!interactionType) {
+    throw new Error("Manual queue item is missing an interaction type.");
+  }
+
+  const amountCents = readAmountCentsFromMetadata(unmatched.metadata);
+  if (interactionType.slug === "donation" && (!amountCents || amountCents <= 0)) {
+    throw new Error("Donation amount is required.");
+  }
+
+  await persistManualQueueIdentityToContactTx(tx, {
+    contactId,
+    unmatched
+  });
+
+  const metadata =
+    interactionType.slug === "donation" && amountCents
+      ? {
+          amountCents,
+          currency: readRecordStringValue(toJsonRecord(unmatched.metadata), "currency") ?? "USD"
+        }
+      : null;
+
+  await tx.manualInteraction.create({
+    data: {
+      contactId,
+      interactionTypeId: interactionType.id,
+      occurredAt: unmatched.occurredAt,
+      title: hints.title ?? interactionType.name,
+      body: hints.summary,
+      laneKey: interactionType.laneKey,
+      metadata: metadata ? toInputJson(metadata) : Prisma.JsonNull,
+      createdByUserId: hints.createdByUserId,
+      createdByName: hints.createdByName
+    }
+  });
+
+  await tx.unmatchedEvent.update({
+    where: { id: unmatched.id },
+    data: {
+      status: ReviewStatus.ASSIGNED,
+      assignedContactId: contactId,
+      resolvedAt: new Date()
+    }
+  });
 }
 
 export async function persistProfileValues(
