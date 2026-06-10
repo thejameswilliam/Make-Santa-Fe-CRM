@@ -17,6 +17,7 @@ import type {
   UpgradeDonorItem
 } from "@/lib/types";
 import { formatDateOnly, formatDateTime } from "@/lib/utils";
+import { DonationAnalytics } from "@/app/components/donation-analytics";
 
 function toDateInputValue(value?: string | null) {
   return value ? value.slice(0, 10) : "";
@@ -254,6 +255,8 @@ export function CultivationDashboard({ initialData }: { initialData: Cultivation
 
   return (
     <>
+      <DonationAnalytics />
+
       <section className="hero-card compact-hero-card cultivation-hero">
         <span className="eyebrow">Cultivation</span>
         <h1 className="record-title">Donor cultivation dashboard</h1>

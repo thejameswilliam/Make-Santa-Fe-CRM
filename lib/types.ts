@@ -133,6 +133,22 @@ export interface CultivationDashboardData {
   needsBackgroundRefresh: boolean;
 }
 
+export interface DonationMonthlyPoint {
+  month: string; // "YYYY-MM"
+  totalCents: number;
+  avgCents: number | null;
+  count: number;
+}
+
+export interface DonationAnalyticsData {
+  monthlyData: DonationMonthlyPoint[];
+  overallAvgCents: number | null;
+  avgDonationsPerActiveDonor: number | null;
+  activeDonorCount: number;
+  totalCents: number;
+  totalCount: number;
+}
+
 export interface ContactListItem {
   id: string;
   displayName: string;

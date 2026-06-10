@@ -34,6 +34,7 @@ import {
 import { prisma } from "@/lib/db";
 import {
   demoCultivationDashboardData,
+  demoDonationAnalyticsData,
   demoContactDetail,
   demoContacts,
   demoDashboardData,
@@ -50,6 +51,7 @@ import type {
   ContactListItem,
   DashboardMetric,
   DashboardData,
+  DonationAnalyticsData,
   MappingScreenData,
   MetricSection,
   PriorityDonorItem,
@@ -4841,4 +4843,110 @@ export async function upsertUnmatchedEvent(input: {
       syncRunId: input.syncRunId ?? null
     }
   });
+}
+
+function generateMonthRange(start: Date, end: Date): string[] {
+  const months: string[] = [];
+  const current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  const endMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
+
+  while (current <= endMonth) {
+    months.push(current.toISOString().slice(0, 7));
+    current.setUTCMonth(current.getUTCMonth() + 1);
+  }
+
+  return months;
+}
+
+export async function getDonationAnalytics(input: {
+  startDate: Date;
+  endDate: Date;
+}): Promise<DonationAnalyticsData> {
+  if (!prisma) {
+    return demoDonationAnalyticsData;
+  }
+
+  const db = assertDatabase();
+
+  const [timelineEvents, manualInteractions] = await Promise.all([
+    db.timelineEvent.findMany({
+      where: {
+        eventKind: "donation",
+        occurredAt: { gte: input.startDate, lte: input.endDate },
+        contact: { mergedIntoId: null }
+      },
+      select: {
+        contactId: true,
+        occurredAt: true,
+        amountCents: true
+      }
+    }),
+    db.manualInteraction.findMany({
+      where: {
+        interactionType: { slug: "donation" },
+        occurredAt: { gte: input.startDate, lte: input.endDate },
+        contact: { mergedIntoId: null }
+      },
+      select: {
+        contactId: true,
+        occurredAt: true,
+        metadata: true
+      }
+    })
+  ]);
+
+  type DonationRecord = { contactId: string; occurredAt: Date; amountCents: number | null };
+
+  const allDonations: DonationRecord[] = [
+    ...timelineEvents.map((e) => ({
+      contactId: e.contactId,
+      occurredAt: e.occurredAt,
+      amountCents: e.amountCents
+    })),
+    ...manualInteractions.map((i) => ({
+      contactId: i.contactId,
+      occurredAt: i.occurredAt,
+      amountCents: readAmountCentsFromMetadata(i.metadata)
+    }))
+  ];
+
+  const monthlyMap = new Map<string, { totalCents: number; count: number; contactIds: Set<string> }>();
+
+  for (const donation of allDonations) {
+    const month = donation.occurredAt.toISOString().slice(0, 7);
+    const entry = monthlyMap.get(month) ?? { totalCents: 0, count: 0, contactIds: new Set<string>() };
+    entry.count++;
+    if (typeof donation.amountCents === "number" && donation.amountCents > 0) {
+      entry.totalCents += donation.amountCents;
+    }
+    entry.contactIds.add(donation.contactId);
+    monthlyMap.set(month, entry);
+  }
+
+  const monthlyData = generateMonthRange(input.startDate, input.endDate).map((month) => {
+    const entry = monthlyMap.get(month);
+    return {
+      month,
+      totalCents: entry?.totalCents ?? 0,
+      avgCents: entry && entry.count > 0 ? Math.round(entry.totalCents / entry.count) : null,
+      count: entry?.count ?? 0
+    };
+  });
+
+  const totalCents = allDonations.reduce(
+    (sum, d) => sum + (typeof d.amountCents === "number" && d.amountCents > 0 ? d.amountCents : 0),
+    0
+  );
+  const totalCount = allDonations.length;
+  const uniqueDonors = new Set(allDonations.map((d) => d.contactId));
+
+  return {
+    monthlyData,
+    overallAvgCents: totalCount > 0 ? Math.round(totalCents / totalCount) : null,
+    avgDonationsPerActiveDonor:
+      uniqueDonors.size > 0 ? Math.round((totalCount / uniqueDonors.size) * 10) / 10 : null,
+    activeDonorCount: uniqueDonors.size,
+    totalCents,
+    totalCount
+  };
 }

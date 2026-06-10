@@ -4,6 +4,7 @@ import type {
   ContactDetail,
   ContactListItem,
   DashboardData,
+  DonationAnalyticsData,
   MappingScreenData,
   ReviewQueueItem,
   TimelineEntry
@@ -466,3 +467,25 @@ export const demoLaneLegend = Object.entries(LANE_META).map(([key, value]) => ({
   key: key as LaneKey,
   ...value
 }));
+
+export const demoDonationAnalyticsData: DonationAnalyticsData = {
+  monthlyData: [
+    { month: "2025-07", totalCents: 49500,  avgCents: 16500, count: 3 },
+    { month: "2025-08", totalCents: 30000,  avgCents: 15000, count: 2 },
+    { month: "2025-09", totalCents: 62500,  avgCents: 12500, count: 5 },
+    { month: "2025-10", totalCents: 72500,  avgCents: 18125, count: 4 },
+    { month: "2025-11", totalCents: 120000, avgCents: 20000, count: 6 },
+    { month: "2025-12", totalCents: 240000, avgCents: 30000, count: 8 },
+    { month: "2026-01", totalCents: 45000,  avgCents: 15000, count: 3 },
+    { month: "2026-02", totalCents: 30000,  avgCents: 15000, count: 2 },
+    { month: "2026-03", totalCents: 60000,  avgCents: 15000, count: 4 },
+    { month: "2026-04", totalCents: 52500,  avgCents: 17500, count: 3 },
+    { month: "2026-05", totalCents: 75000,  avgCents: 15000, count: 5 },
+    { month: "2026-06", totalCents: 35000,  avgCents: 17500, count: 2 }
+  ],
+  overallAvgCents: 16436,
+  avgDonationsPerActiveDonor: 2.6,
+  activeDonorCount: 18,
+  totalCents: 872500,
+  totalCount: 47
+};
