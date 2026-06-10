@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 
 import { BackfillControl } from "@/app/components/backfill-control";
+import { ThemeToggle } from "@/app/components/theme-toggle";
 import { config } from "@/lib/config";
 import type { SessionUser } from "@/lib/types";
 
@@ -46,6 +47,7 @@ export function AppShell({
         </nav>
 
         <div className="topbar-meta">
+          <ThemeToggle />
           <details className="topbar-menu">
             <summary className="topbar-menu-trigger" aria-label="Open tools menu">
               <span className="topbar-menu-icon" aria-hidden="true">

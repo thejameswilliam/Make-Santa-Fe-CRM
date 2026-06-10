@@ -16,6 +16,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      {/* Sets theme before first paint to prevent flash */}
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('msf-crm-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);return;}var dark=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){}})();`
+          }}
+        />
+      </head>
       <body>
         <Suspense fallback={null}>
           <NavigationLoadingBar />
