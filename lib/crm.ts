@@ -3159,7 +3159,8 @@ export async function getReviewQueuePageData(): Promise<ReviewQueuePageData> {
   const [items, interactionTypes] = await Promise.all([
     db.unmatchedEvent.findMany({
       where: {
-        status: ReviewStatus.PENDING
+        status: ReviewStatus.PENDING,
+        NOT: { source: PrismaSourceSystem.NEWSLETTER }
       },
       orderBy: {
         occurredAt: "desc"
@@ -3433,6 +3434,37 @@ export async function createContactWithPrimaryEmail(options: {
   const contactId = await db.$transaction(async (tx) => createContactWithPrimaryEmailTx(tx, options));
   await refreshContactListSummaries([contactId], db);
   return contactId;
+}
+
+export async function addContactAlias(contactId: string, email: string) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) {
+    throw new Error("A valid email address is required.");
+  }
+
+  const db = assertDatabase();
+
+  const existing = await db.contactEmail.findUnique({
+    where: { normalizedEmail: normalized },
+    select: { contactId: true }
+  });
+
+  if (existing) {
+    if (existing.contactId === contactId) {
+      return;
+    }
+    throw new Error("That email address is already associated with another contact.");
+  }
+
+  await db.contactEmail.create({
+    data: {
+      contactId,
+      email: email.trim(),
+      normalizedEmail: normalized,
+      isPrimary: false,
+      source: PrismaSourceSystem.MANUAL
+    }
+  });
 }
 
 export async function createManualContact(input: {
