@@ -118,6 +118,8 @@ function assertDatabase() {
   return prisma;
 }
 
+const DISPLAY_STALE_MS = 24 * 60 * 60 * 1000;
+
 function isStale(dateValue?: Date | null) {
   if (!dateValue) {
     return true;
@@ -126,8 +128,20 @@ function isStale(dateValue?: Date | null) {
   return Date.now() - dateValue.getTime() > config.syncFreshnessMs;
 }
 
+function isDisplayStale(dateValue?: Date | null) {
+  if (!dateValue) {
+    return true;
+  }
+
+  return Date.now() - dateValue.getTime() > DISPLAY_STALE_MS;
+}
+
 function isAutoRefreshStale(source: SourceSystemKey, dateValue?: Date | null) {
   return isAutoBackgroundRefreshSource(source) && isStale(dateValue);
+}
+
+function isAutoDisplayStale(source: SourceSystemKey, dateValue?: Date | null) {
+  return isAutoBackgroundRefreshSource(source) && isDisplayStale(dateValue);
 }
 
 function sourceLabel(source: SourceSystemKey) {
@@ -2507,6 +2521,9 @@ export async function getDashboardData(
     syncStatus,
     needsBackgroundRefresh: syncStates.some((state) =>
       isAutoRefreshStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
+    ),
+    needsStaleNotice: syncStates.some((state) =>
+      isAutoDisplayStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
     )
   };
 }
@@ -2569,6 +2586,9 @@ export async function getCultivationDashboardData(): Promise<CultivationDashboar
     lapsedDonors,
     needsBackgroundRefresh: syncStates.some((state) =>
       isAutoRefreshStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
+    ),
+    needsStaleNotice: syncStates.some((state) =>
+      isAutoDisplayStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
     )
   };
 }
@@ -2895,6 +2915,9 @@ export async function getContactDetail(contactId: string): Promise<ContactDetail
     }),
     needsBackgroundRefresh: syncStates.some((state) =>
       isAutoRefreshStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
+    ),
+    needsStaleNotice: syncStates.some((state) =>
+      isAutoDisplayStale(state.source as SourceSystemKey, state.lastSuccessfulSyncAt)
     )
   };
 }

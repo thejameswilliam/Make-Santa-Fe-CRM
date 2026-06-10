@@ -74,6 +74,7 @@ export default async function ContactPage({
 
           <BackgroundRefresh
             enabled={detail.needsBackgroundRefresh}
+            notifyEnabled={detail.needsStaleNotice}
             message="Loaded the cached person record."
             source={undefined}
           />

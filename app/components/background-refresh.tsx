@@ -7,10 +7,12 @@ const BACKGROUND_REFRESH_IDLE_TIMEOUT_MS = 1500;
 
 export function BackgroundRefresh({
   enabled,
+  notifyEnabled,
   source,
   message
 }: {
   enabled: boolean;
+  notifyEnabled?: boolean;
   source?: string;
   message: string;
 }) {
@@ -93,7 +95,7 @@ export function BackgroundRefresh({
     };
   }, [enabled, source]);
 
-  if (!enabled) {
+  if (!enabled || !notifyEnabled) {
     return null;
   }
 

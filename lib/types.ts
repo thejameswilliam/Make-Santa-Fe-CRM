@@ -65,6 +65,7 @@ export interface DashboardData {
   taggedContacts: ContactListItem[];
   syncStatus: SyncStatusCard[];
   needsBackgroundRefresh: boolean;
+  needsStaleNotice: boolean;
 }
 
 export interface CultivationOwnerOption {
@@ -131,6 +132,7 @@ export interface CultivationDashboardData {
   upgradeCandidates: UpgradeDonorItem[];
   lapsedDonors: LapsedDonorItem[];
   needsBackgroundRefresh: boolean;
+  needsStaleNotice: boolean;
 }
 
 export interface DonationMonthlyPoint {
@@ -234,6 +236,7 @@ export interface ContactDetail {
     laneKey: LaneKey;
   }>;
   needsBackgroundRefresh: boolean;
+  needsStaleNotice: boolean;
 }
 
 export interface ReviewQueueItem {

@@ -35,6 +35,7 @@ export default async function DashboardPage({
         <section className="status-toolbar">
           <BackgroundRefresh
             enabled={data.needsBackgroundRefresh}
+            notifyEnabled={data.needsStaleNotice}
             message="Loaded cached CRM data."
           />
         </section>

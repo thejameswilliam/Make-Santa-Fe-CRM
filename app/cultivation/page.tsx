@@ -18,6 +18,7 @@ export default async function CultivationPage() {
         <section className="status-toolbar">
           <BackgroundRefresh
             enabled={data.needsBackgroundRefresh}
+            notifyEnabled={data.needsStaleNotice}
             message="Loaded cached CRM data."
           />
         </section>

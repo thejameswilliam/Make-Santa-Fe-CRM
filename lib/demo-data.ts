@@ -170,7 +170,8 @@ export const demoDashboardData: DashboardData = {
     lastSuccessfulSyncAt: new Date(Date.now() - index * 8 * 60 * 1000).toISOString(),
     stale: index < 2
   })),
-  needsBackgroundRefresh: true
+  needsBackgroundRefresh: true,
+  needsStaleNotice: false
 };
 
 export const demoCultivationDashboardData: CultivationDashboardData = {
@@ -266,7 +267,8 @@ export const demoCultivationDashboardData: CultivationDashboardData = {
       urgencyTone: "critical"
     }
   ],
-  needsBackgroundRefresh: true
+  needsBackgroundRefresh: true,
+  needsStaleNotice: false
 };
 
 export const demoContacts: ContactListItem[] = [
@@ -381,7 +383,8 @@ export const demoContactDetail: ContactDetail = {
     { id: "community-event", name: "Community Event", slug: "community-event", laneKey: "COMMUNITY_EVENT" },
     { id: "volunteer-shift", name: "Volunteer Shift", slug: "volunteer-shift", laneKey: "VOLUNTEER" }
   ],
-  needsBackgroundRefresh: true
+  needsBackgroundRefresh: true,
+  needsStaleNotice: false
 };
 
 export const demoReviewQueue: ReviewQueueItem[] = [
