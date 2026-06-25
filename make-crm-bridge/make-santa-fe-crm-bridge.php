@@ -905,43 +905,7 @@ class Make_Santa_Fe_CRM_Bridge {
 		return $parts ? implode(' | ', $parts) : null;
 	}
 
-	private function resolve_wordpress_profile_photo_url($user_id) {
-		$user_id = absint($user_id);
-		if (! $user_id) {
-			return null;
-		}
-
-		$avatar = get_avatar_data(
-			$user_id,
-			array(
-				'size'          => 192,
-				'default'       => '404',
-				'force_default' => false,
-			)
-		);
-
-		if (empty($avatar['url']) || ! is_string($avatar['url'])) {
-			return null;
-		}
-
-		$avatar_url = trim($avatar['url']);
-		if (! $avatar_url || ! filter_var($avatar_url, FILTER_VALIDATE_URL)) {
-			return null;
-		}
-
-		$avatar_host                = wp_parse_url($avatar_url, PHP_URL_HOST);
-		$is_gravatar_host           = is_string($avatar_host) && preg_match('/(^|\.)gravatar\.com$/i', $avatar_host);
-		$is_wordpress_avatar_host   = is_string($avatar_host) && preg_match('/(^|\.)avatar-management\.wordpress\.com$/i', $avatar_host);
-		$found_avatar               = ! empty($avatar['found_avatar']);
-
-		if ($found_avatar || (! $is_gravatar_host && ! $is_wordpress_avatar_host)) {
-			return esc_url_raw($avatar_url);
-		}
-
-		return null;
-	}
-
-	private function resolve_acf_profile_photo_url($user_id) {
+	private function resolve_profile_photo_url($user_id) {
 		$user_id = absint($user_id);
 		if (! $user_id) {
 			return null;
@@ -999,20 +963,6 @@ class Make_Santa_Fe_CRM_Bridge {
 		}
 
 		return null;
-	}
-
-	private function resolve_profile_photo_url($user_id) {
-		$user_id = absint($user_id);
-		if (! $user_id) {
-			return null;
-		}
-
-		$avatar_url = $this->resolve_wordpress_profile_photo_url($user_id);
-		if ($avatar_url) {
-			return $avatar_url;
-		}
-
-		return $this->resolve_acf_profile_photo_url($user_id);
 	}
 
 	private function normalize_certification_ids($values) {
