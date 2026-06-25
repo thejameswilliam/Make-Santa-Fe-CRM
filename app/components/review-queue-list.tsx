@@ -15,7 +15,7 @@ import type {
   ReviewQueueInteractionTypeOption,
   ReviewQueueItem
 } from "@/lib/types";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, getCurrentDateTimeInputValue } from "@/lib/utils";
 
 const REMOVAL_DELAY_MS = 220;
 
@@ -28,7 +28,7 @@ function getReviewTypeKeyForInteractionType(option: ReviewQueueInteractionTypeOp
 }
 
 function buildDefaultOccurredAtValue() {
-  return new Date().toISOString().slice(0, 16);
+  return getCurrentDateTimeInputValue();
 }
 
 function createInitialDraft(interactionTypeOptions: ReviewQueueInteractionTypeOption[]) {

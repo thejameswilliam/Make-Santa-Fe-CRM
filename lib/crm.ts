@@ -68,10 +68,12 @@ import type {
   WordPressSourceEvent
 } from "@/lib/types";
 import {
+  formatMonthKey,
   decodeHtmlEntities,
   formatCurrency,
   formatDateOnly,
   normalizeEmail,
+  parseDateTimeInputValue,
   parseCurrencyAmountToCents,
   slugify
 } from "@/lib/utils";
@@ -118,8 +120,6 @@ function assertDatabase() {
   return prisma;
 }
 
-const DISPLAY_STALE_MS = 24 * 60 * 60 * 1000;
-
 function isStale(dateValue?: Date | null) {
   if (!dateValue) {
     return true;
@@ -128,20 +128,12 @@ function isStale(dateValue?: Date | null) {
   return Date.now() - dateValue.getTime() > config.syncFreshnessMs;
 }
 
-function isDisplayStale(dateValue?: Date | null) {
-  if (!dateValue) {
-    return true;
-  }
-
-  return Date.now() - dateValue.getTime() > DISPLAY_STALE_MS;
-}
-
 function isAutoRefreshStale(source: SourceSystemKey, dateValue?: Date | null) {
   return isAutoBackgroundRefreshSource(source) && isStale(dateValue);
 }
 
 function isAutoDisplayStale(source: SourceSystemKey, dateValue?: Date | null) {
-  return isAutoBackgroundRefreshSource(source) && isDisplayStale(dateValue);
+  return isAutoBackgroundRefreshSource(source) && isStale(dateValue);
 }
 
 function sourceLabel(source: SourceSystemKey) {
@@ -3235,8 +3227,8 @@ export async function createManualReviewQueueItem(input: {
     throw new Error("Title is required.");
   }
 
-  const occurredAt = new Date(input.occurredAt);
-  if (Number.isNaN(occurredAt.getTime())) {
+  const occurredAt = parseDateTimeInputValue(input.occurredAt);
+  if (!occurredAt) {
     throw new Error("Date and time are invalid.");
   }
 
@@ -3660,8 +3652,8 @@ export async function updateManualInteraction(input: {
     throw new Error("Title is required.");
   }
 
-  const occurredAt = new Date(input.occurredAt);
-  if (Number.isNaN(occurredAt.getTime())) {
+  const occurredAt = parseDateTimeInputValue(input.occurredAt);
+  if (!occurredAt) {
     throw new Error("Date and time are invalid.");
   }
 
@@ -3756,6 +3748,11 @@ export async function createManualInteraction(input: {
     throw new Error("Interaction type not found.");
   }
 
+  const occurredAt = parseDateTimeInputValue(input.occurredAt);
+  if (!occurredAt) {
+    throw new Error("Date and time are invalid.");
+  }
+
   const amountCents = parseCurrencyAmountToCents(input.amountValue ?? null);
   if (interactionType.slug === "donation" && (!amountCents || amountCents <= 0)) {
     throw new Error("Donation amount is required.");
@@ -3773,7 +3770,7 @@ export async function createManualInteraction(input: {
     data: {
       contactId: input.contactId,
       interactionTypeId: interactionType.id,
-      occurredAt: new Date(input.occurredAt),
+      occurredAt,
       title: input.title.trim(),
       body: input.body?.trim() || null,
       laneKey: interactionType.laneKey,
@@ -4902,12 +4899,15 @@ export async function upsertUnmatchedEvent(input: {
 
 function generateMonthRange(start: Date, end: Date): string[] {
   const months: string[] = [];
-  const current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-  const endMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
+  let currentMonth = formatMonthKey(start);
+  const endMonth = formatMonthKey(end);
 
-  while (current <= endMonth) {
-    months.push(current.toISOString().slice(0, 7));
-    current.setUTCMonth(current.getUTCMonth() + 1);
+  while (currentMonth <= endMonth) {
+    months.push(currentMonth);
+
+    const [year, month] = currentMonth.split("-").map(Number);
+    const nextMonth = new Date(Date.UTC(year, month, 1));
+    currentMonth = `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, "0")}`;
   }
 
   return months;
@@ -4968,7 +4968,7 @@ export async function getDonationAnalytics(input: {
   const monthlyMap = new Map<string, { totalCents: number; count: number; contactIds: Set<string> }>();
 
   for (const donation of allDonations) {
-    const month = donation.occurredAt.toISOString().slice(0, 7);
+    const month = formatMonthKey(donation.occurredAt);
     const entry = monthlyMap.get(month) ?? { totalCents: 0, count: 0, contactIds: new Set<string>() };
     entry.count++;
     if (typeof donation.amountCents === "number" && donation.amountCents > 0) {

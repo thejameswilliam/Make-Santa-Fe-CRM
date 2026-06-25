@@ -426,16 +426,17 @@ export async function ensureFreshData(source?: SourceSystemKey) {
     return !state?.lastSuccessfulSyncAt || Date.now() - state.lastSuccessfulSyncAt.getTime() > config.syncFreshnessMs;
   });
 
-  const nextStaleSource = staleSources[0];
-  if (!nextStaleSource) {
+  if (staleSources.length === 0) {
     return { refreshed: false, sources: [] as SourceSystemKey[] };
   }
 
-  await runIncrementalSyncSingleFlight(nextStaleSource);
+  for (const staleSource of staleSources) {
+    await runIncrementalSyncSingleFlight(staleSource);
+  }
 
   return {
     refreshed: true,
-    sources: [nextStaleSource]
+    sources: staleSources
   };
 }
 

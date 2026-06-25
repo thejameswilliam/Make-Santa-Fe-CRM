@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+import { getCurrentDateTimeInputValue } from "@/lib/utils";
+
 interface InteractionTypeOption {
   id: string;
   name: string;
@@ -81,7 +83,7 @@ export function ManualInteractionForm({
         <label>
           Date and time
           <input
-            defaultValue={new Date().toISOString().slice(0, 16)}
+            defaultValue={getCurrentDateTimeInputValue()}
             name="occurredAt"
             required
             type="datetime-local"

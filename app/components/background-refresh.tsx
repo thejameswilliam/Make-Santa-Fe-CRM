@@ -103,7 +103,7 @@ export function BackgroundRefresh({
   if (status === "scheduled") {
     statusMessage = `${message} Refresh queued.`;
   } else if (status === "syncing") {
-    statusMessage = `${message} Refreshing one stale source in the background…`;
+    statusMessage = `${message} Refreshing stale data in the background…`;
   } else if (status === "done") {
     statusMessage = `${message} Background refresh complete. Updated data will appear on the next page load.`;
   } else if (status === "error") {

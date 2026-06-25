@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionFromRequest } from "@/lib/auth";
 import { getDonationAnalytics } from "@/lib/crm";
+import { parseDateInputEnd, parseDateInputStart } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   const session = getSessionFromRequest(request);
@@ -17,10 +18,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "startDate and endDate are required." }, { status: 400 });
   }
 
-  const startDate = new Date(`${startDateParam}T00:00:00.000Z`);
-  const endDate = new Date(`${endDateParam}T23:59:59.999Z`);
+  const startDate = parseDateInputStart(startDateParam);
+  const endDate = parseDateInputEnd(endDateParam);
 
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+  if (!startDate || !endDate || startDate > endDate) {
     return NextResponse.json({ error: "Invalid date range." }, { status: 400 });
   }
 

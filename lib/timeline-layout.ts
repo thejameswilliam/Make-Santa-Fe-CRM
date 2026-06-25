@@ -1,5 +1,12 @@
 import { LANE_META, type LaneKey } from "@/lib/constants";
 import type { TimelineEntry } from "@/lib/types";
+import {
+  addCrmDays,
+  addCrmMonths,
+  formatInCrmTimeZone,
+  startOfCrmDay,
+  startOfCrmMonth
+} from "@/lib/utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TOP_PADDING = 40;
@@ -107,26 +114,8 @@ function computePositionedItems(
   });
 }
 
-function startOfUtcDay(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
-function startOfUtcMonth(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
-
-function addUtcDays(date: Date, count: number) {
-  const next = new Date(date.getTime());
-  next.setUTCDate(next.getUTCDate() + count);
-  return next;
-}
-
-function addUtcMonths(date: Date, count: number) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + count, 1));
-}
-
 function formatTickLabel(date: Date, monthOnly = false) {
-  return new Intl.DateTimeFormat("en-US", monthOnly ? { month: "short", year: "numeric" } : { month: "short", day: "numeric" }).format(date);
+  return formatInCrmTimeZone(date, monthOnly ? { month: "short", year: "numeric" } : { month: "short", day: "numeric" });
 }
 
 function buildTicks(newestTimestampMs: number, oldestTimestampMs: number, spanMs: number, height: number) {
@@ -149,19 +138,29 @@ function buildTicks(newestTimestampMs: number, oldestTimestampMs: number, spanMs
 
   if (spanDays <= 120) {
     const stepDays = spanDays <= 30 ? 7 : 14;
-    let cursor = startOfUtcDay(new Date(newestTimestampMs));
+    let cursor = startOfCrmDay(new Date(newestTimestampMs)) ?? new Date(newestTimestampMs);
 
     while (cursor.getTime() >= oldestTimestampMs) {
       pushTick(cursor.getTime(), formatTickLabel(cursor));
-      cursor = addUtcDays(cursor, -stepDays);
+      const nextCursor = addCrmDays(cursor, -stepDays);
+      if (!nextCursor) {
+        break;
+      }
+
+      cursor = nextCursor;
     }
   } else {
     const stepMonths = spanDays <= 365 ? 1 : spanDays <= 730 ? 2 : 3;
-    let cursor = startOfUtcMonth(new Date(newestTimestampMs));
+    let cursor = startOfCrmMonth(new Date(newestTimestampMs)) ?? new Date(newestTimestampMs);
 
     while (cursor.getTime() >= oldestTimestampMs) {
       pushTick(cursor.getTime(), formatTickLabel(cursor, true));
-      cursor = addUtcMonths(cursor, -stepMonths);
+      const nextCursor = addCrmMonths(cursor, -stepMonths);
+      if (!nextCursor) {
+        break;
+      }
+
+      cursor = nextCursor;
     }
   }
 

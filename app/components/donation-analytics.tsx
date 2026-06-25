@@ -3,24 +3,26 @@
 import { useEffect, useState } from "react";
 
 import type { DonationAnalyticsData, DonationMonthlyPoint } from "@/lib/types";
+import { formatDateInputValue, formatInCrmTimeZone } from "@/lib/utils";
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
 function toDateString(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return formatDateInputValue(date);
 }
 
 function defaultRange(months: number): { startDate: string; endDate: string } {
-  const end = new Date();
-  const start = new Date();
-  start.setMonth(start.getMonth() - months);
-  return { startDate: toDateString(start), endDate: toDateString(end) };
+  const end = toDateString(new Date());
+  const [year, month, day] = end.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1 - months, day, 12));
+
+  return { startDate: toDateString(start), endDate: end };
 }
 
 function formatMonthLabel(month: string): string {
   const [year, monthNum] = month.split("-");
-  const date = new Date(Number(year), Number(monthNum) - 1, 1);
-  return date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+  const date = new Date(Date.UTC(Number(year), Number(monthNum) - 1, 1, 12));
+  return formatInCrmTimeZone(date, { month: "short", year: "2-digit" });
 }
 
 // ── Number formatters ─────────────────────────────────────────────────────────

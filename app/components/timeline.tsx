@@ -12,7 +12,7 @@ import {
 } from "@/lib/constants";
 import { buildTimelineLayout } from "@/lib/timeline-layout";
 import type { TimelineEntry } from "@/lib/types";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatDateTimeInputValue } from "@/lib/utils";
 
 interface ManualInteractionTypeOption {
   id: string;
@@ -45,13 +45,11 @@ function collectLaneKeys(entries: TimelineEntry[]) {
 }
 
 function formatDateTimeLocalInput(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  try {
+    return formatDateTimeInputValue(value);
+  } catch {
     return "";
   }
-
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return localDate.toISOString().slice(0, 16);
 }
 
 function buildManualTitlePlaceholder(slug?: string | null) {
