@@ -16,10 +16,10 @@
   --shadow: 0 28px 80px rgba(18, 20, 58, 0.1);
   --glow: 0 0 28px rgba(8, 145, 178, 0.1), 0 0 56px rgba(109, 40, 217, 0.07);
   --glow-soft: 0 0 0 1px rgba(8, 145, 178, 0.14), 0 0 26px rgba(109, 40, 217, 0.08);
-  --radius-xl: 6px;
-  --radius-lg: 5px;
-  --radius-md: 4px;
-  --radius-sm: 3px;
+  --radius-xl: 0;
+  --radius-lg: 0;
+  --radius-md: 0;
+  --radius-sm: 0;
   --font-display: "Space Grotesk", "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
   --font-body: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", "Menlo", monospace;
@@ -3337,10 +3337,10 @@ html[data-theme="dark"] {
   --shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.06);
   --glow: none;
   --glow-soft: 0 0 0 1px rgba(37, 99, 235, 0.08), 0 10px 26px rgba(37, 99, 235, 0.08);
-  --radius-xl: 28px;
-  --radius-lg: 22px;
-  --radius-md: 18px;
-  --radius-sm: 12px;
+  --radius-xl: 0;
+  --radius-lg: 0;
+  --radius-md: 0;
+  --radius-sm: 0;
 }
 
 [data-theme="dark"] {
@@ -3430,20 +3430,20 @@ html[data-theme="dark"] {
 }
 
 :root .page-shell {
-  width: min(1440px, calc(100% - 40px));
-  margin: 20px auto 56px;
+  width: min(1440px, calc(100% - 32px));
+  margin: 14px auto 36px;
 }
 
 :root .page-grid {
-  gap: 24px;
-  margin-top: 28px;
+  gap: 18px;
+  margin-top: 20px;
 }
 
 :root .topbar {
   position: sticky;
-  top: 20px;
-  gap: 22px;
-  padding: 20px 24px;
+  top: 14px;
+  gap: 14px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
   background: linear-gradient(180deg, var(--surface-strong), var(--surface));
   box-shadow: var(--shadow);
@@ -3480,22 +3480,21 @@ html[data-theme="dark"] {
 
 :root .topbar-links,
 :root .topbar-meta {
-  gap: 10px;
+  gap: 8px;
 }
 
 :root .topbar-link,
 :root .topbar-action-button,
 :root .topbar-menu-trigger,
 :root .topbar-menu-link {
-  border-radius: 999px;
   text-transform: none;
   letter-spacing: 0;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 600;
 }
 
 :root .topbar-link {
-  padding: 10px 14px;
+  padding: 8px 10px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
@@ -3511,7 +3510,10 @@ html[data-theme="dark"] {
 
 :root .topbar-action-button,
 :root .topbar-menu-trigger {
-  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   background: var(--surface-subtle);
   color: var(--muted-strong);
@@ -3520,7 +3522,7 @@ html[data-theme="dark"] {
 
 :root .topbar-action-button:hover,
 :root .topbar-menu-trigger:hover,
-:root .topbar-menu[open] .topbar-menu-trigger {
+:root .topbar-menu.is-open .topbar-menu-trigger {
   color: var(--text);
   border-color: var(--line-strong);
   background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface-strong));
@@ -3544,38 +3546,43 @@ html[data-theme="dark"] {
 }
 
 :root .theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
   min-width: auto;
-  gap: 10px;
+  gap: 8px;
 }
 
 :root .theme-toggle-indicator {
+  display: inline-block;
   position: relative;
-  width: 34px;
-  height: 20px;
+  width: 28px;
+  height: 16px;
   flex: 0 0 auto;
-  border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 12%, var(--surface-dark));
   border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
+  vertical-align: middle;
 }
 
 :root .theme-toggle-indicator-thumb {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
+  width: 10px;
+  height: 10px;
   background: var(--accent);
   box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
   transition: transform 160ms ease, background 160ms ease;
 }
 
 [data-theme="dark"] .theme-toggle-indicator-thumb {
-  transform: translateX(14px);
+  transform: translateX(12px);
   background: #e2e8f0;
 }
 
 :root .theme-toggle-label {
+  display: block;
+  line-height: 1;
+  white-space: nowrap;
   font-size: 0.84rem;
   color: inherit;
 }
@@ -3610,14 +3617,24 @@ html[data-theme="dark"] {
 }
 
 :root .topbar-menu-panel {
-  min-width: 280px;
-  padding: 16px;
-  border-radius: var(--radius-lg);
+  display: none;
+  min-width: 232px;
+  gap: 10px;
+  padding: 10px;
   box-shadow: var(--shadow);
+  z-index: 20;
+}
+
+:root .topbar-menu.is-open .topbar-menu-panel {
+  display: grid;
 }
 
 :root .topbar-menu-section-danger {
   border-top-color: var(--line);
+}
+
+:root .topbar-menu-section {
+  gap: 6px;
 }
 
 :root .topbar-menu-label,
@@ -3649,8 +3666,8 @@ html[data-theme="dark"] {
 }
 
 :root .topbar-menu-link {
-  min-height: 40px;
-  padding: 9px 12px;
+  min-height: 34px;
+  padding: 6px 8px;
   border: 1px solid var(--line);
   background: var(--surface-subtle);
   color: var(--muted-strong);
@@ -3672,12 +3689,12 @@ html[data-theme="dark"] {
 :root .timeline-card-stamp,
 :root .timeline-source-link,
 :root .cultivation-score-pill {
-  border-radius: 999px;
+  border-radius: 0;
 }
 
 :root .status-pill,
 :root .lane-pill {
-  padding: 6px 10px;
+  padding: 4px 7px;
   border-color: var(--line);
   background: var(--surface-subtle);
   color: var(--muted-strong);
@@ -3777,11 +3794,11 @@ html[data-theme="dark"] {
 :root .button-secondary,
 :root .button-ghost,
 :root .button-tertiary {
-  border-radius: 14px;
   text-transform: none;
   letter-spacing: 0;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 600;
+  padding: 8px 12px;
 }
 
 :root .button {
@@ -3823,14 +3840,14 @@ html[data-theme="dark"] {
 
 :root .progress-track {
   border: 0;
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-subtle));
 }
 
 :root .progress-fill,
 :root .progress-fill-secondary,
 :root .progress-fill-mini {
-  border-radius: inherit;
+  border-radius: 0;
   box-shadow: none;
 }
 
@@ -3855,7 +3872,8 @@ html[data-theme="dark"] {
 :root .field textarea,
 :root .search-form input,
 :root .donation-date-input {
-  border-radius: 14px;
+  border-radius: 0;
+  padding: 10px 12px;
   border-color: var(--line);
   background: linear-gradient(180deg, var(--surface-strong), var(--surface));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
@@ -3873,8 +3891,8 @@ html[data-theme="dark"] {
 }
 
 :root .people-filter-toggle {
-  min-height: 48px;
-  padding-bottom: 2px;
+  min-height: 40px;
+  padding-bottom: 0;
   color: var(--muted);
   letter-spacing: 0;
   text-transform: none;
@@ -3883,7 +3901,7 @@ html[data-theme="dark"] {
 :root .role-filter-pill,
 :root .role-tag-pill,
 :root .timeline-filter-pill {
-  padding: 7px 12px;
+  padding: 5px 8px;
   border-color: var(--line);
   background: var(--surface-subtle);
   color: var(--muted-strong);
@@ -3917,12 +3935,12 @@ html[data-theme="dark"] {
 }
 
 :root .contact-list {
-  gap: 20px;
+  gap: 14px;
 }
 
 :root .contact-card {
-  min-height: 236px;
-  padding: 28px 22px 22px;
+  min-height: 208px;
+  padding: 22px 16px 16px;
   border-color: var(--line);
   background: linear-gradient(180deg, var(--surface-strong), var(--surface));
   box-shadow: var(--shadow-soft);
@@ -3940,10 +3958,10 @@ html[data-theme="dark"] {
 }
 
 :root .contact-card-avatar-shell {
-  top: -16px;
-  left: 18px;
-  width: 60px;
-  height: 60px;
+  top: -12px;
+  left: 14px;
+  width: 50px;
+  height: 50px;
   border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
   background: linear-gradient(180deg, var(--surface-subtle), color-mix(in srgb, var(--accent) 10%, var(--surface-strong)));
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.1);
@@ -3959,9 +3977,9 @@ html[data-theme="dark"] {
 }
 
 :root .contact-card-header {
-  min-height: 48px;
-  padding-left: 78px;
-  padding-right: 48px;
+  min-height: 42px;
+  padding-left: 60px;
+  padding-right: 34px;
 }
 
 :root .contact-card-name,
@@ -3977,7 +3995,7 @@ html[data-theme="dark"] {
 }
 
 :root .contact-card-footer {
-  padding-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid var(--line);
 }
 
@@ -4015,8 +4033,8 @@ html[data-theme="dark"] {
 
 :root .cultivation-row,
 :root .cultivation-readonly-row {
-  gap: 16px;
-  padding: 18px 20px;
+  gap: 12px;
+  padding: 14px 16px;
 }
 
 :root .cultivation-score-pill {
@@ -4035,7 +4053,7 @@ html[data-theme="dark"] {
 }
 
 :root .timeline-filter-pill {
-  padding: 7px 12px;
+  padding: 5px 8px;
 }
 
 :root .timeline-scale-axis {
@@ -4126,7 +4144,7 @@ html[data-theme="dark"] {
 }
 
 :root .timeline-inline-edit-button {
-  border-radius: 10px;
+  border-radius: 0;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -4146,13 +4164,98 @@ html[data-theme="dark"] {
 
 :root .login-card {
   width: min(640px, 100%);
-  padding: 32px;
+  padding: 20px;
   border-color: var(--line);
   box-shadow: var(--shadow);
 }
 
 :root .divider {
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 22%, var(--line-strong)), transparent);
+}
+
+:root .hero-grid,
+:root .card-grid,
+:root .field-grid,
+:root .record-grid,
+:root .split-grid {
+  gap: 14px;
+}
+
+:root .metric-grid,
+:root .status-grid,
+:root .surface-list,
+:root .sync-list,
+:root .section-stack,
+:root .people-toolbar-grid {
+  gap: 10px;
+}
+
+:root .hero-card,
+:root .panel,
+:root .review-card,
+:root .sync-overlay-card {
+  gap: 12px;
+  padding: 16px;
+}
+
+:root .metric-card,
+:root .status-card,
+:root .surface-row,
+:root .sync-row,
+:root .note-item,
+:root .compact-profile-item,
+:root .donation-chart-panel,
+:root .donation-stat-widget,
+:root .profile-item,
+:root .profile-source-item,
+:root .lookup-result,
+:root .lookup-selection,
+:root .empty-state,
+:root .certification-card {
+  padding: 12px;
+}
+
+:root .panel-header,
+:root .row-between,
+:root .pill-row {
+  gap: 10px;
+}
+
+:root .topbar,
+:root .topbar-link,
+:root .topbar-action-button,
+:root .topbar-menu-trigger,
+:root .topbar-menu-link,
+:root .topbar-menu-panel,
+:root .status-pill,
+:root .lane-pill,
+:root .button,
+:root .button-secondary,
+:root .button-ghost,
+:root .button-tertiary,
+:root .field input,
+:root .field select,
+:root .field textarea,
+:root .search-form input,
+:root .role-filter-pill,
+:root .role-tag-pill,
+:root .timeline-filter-pill,
+:root .timeline-card-stamp,
+:root .timeline-source-link,
+:root .theme-toggle-indicator,
+:root .theme-toggle-indicator-thumb,
+:root .contact-card-avatar-shell,
+:root .donation-preset-btn,
+:root .donation-date-input,
+:root .donation-chart-panel,
+:root .donation-stat-widget,
+:root .cultivation-score-pill,
+:root .timeline-inline-edit-button,
+:root .progress-track,
+:root .progress-fill,
+:root .progress-fill-secondary,
+:root .progress-fill-mini {
+  border-radius: 0;
 }
 
 @media (max-width: 1080px) {
@@ -4170,12 +4273,12 @@ html[data-theme="dark"] {
 
 @media (max-width: 700px) {
   :root .page-shell {
-    width: min(100% - 20px, 1440px);
+    width: min(100% - 16px, 1440px);
   }
 
   :root .topbar {
     top: 0;
-    padding: 18px;
+    padding: 12px;
   }
 
   :root .brand-note {
