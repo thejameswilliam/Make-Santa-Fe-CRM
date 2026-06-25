@@ -47,7 +47,10 @@ export function ThemeToggle() {
       title={theme === "light" ? "Dark mode" : "Light mode"}
       type="button"
     >
-      {theme === "light" ? "◑" : "○"}
+      <span className="theme-toggle-indicator" aria-hidden="true">
+        <span className="theme-toggle-indicator-thumb" />
+      </span>
+      <span className="theme-toggle-label">{theme === "light" ? "Light" : "Dark"}</span>
     </button>
   );
 }

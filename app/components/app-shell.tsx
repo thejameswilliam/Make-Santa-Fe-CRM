@@ -18,6 +18,8 @@ const ADMIN_ITEMS = [
   { href: "/mappings", label: "Mappings" }
 ] as const satisfies ReadonlyArray<{ href: Route; label: string }>;
 
+const SHELL_SECTIONS = [...NAV_ITEMS, ...ADMIN_ITEMS];
+
 export function AppShell({
   currentPath,
   session,
@@ -27,11 +29,17 @@ export function AppShell({
   session: SessionUser;
   children: React.ReactNode;
 }) {
+  const currentSection = SHELL_SECTIONS.find((item) => item.href === currentPath)?.label ?? "Workspace";
+
   return (
     <div className="page-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">CRM</span>
+          <span className="brand-kicker">Make Santa Fe</span>
+          <span className="brand-mark">CRM Workspace</span>
+          <span className="brand-note">
+            {currentSection} · Fundraising operations, people records, and cultivation workflows.
+          </span>
         </div>
 
         <nav className="topbar-links" aria-label="Primary">
@@ -51,9 +59,9 @@ export function AppShell({
           <details className="topbar-menu">
             <summary className="topbar-menu-trigger" aria-label="Open tools menu">
               <span className="topbar-menu-icon" aria-hidden="true">
-                ☰
+                ...
               </span>
-              <span>Tools</span>
+              <span>Admin</span>
             </summary>
 
             <div className="topbar-menu-panel">

@@ -23,9 +23,9 @@ function buildInitials(name: string) {
 
 function buildCardAccentPillStyle(color: string) {
   return {
-    background: `color-mix(in srgb, ${color} 30%, rgba(6, 8, 20, 0.96))`,
-    color: "#fff",
-    borderColor: `color-mix(in srgb, ${color} 44%, rgba(255, 255, 255, 0.06))`
+    background: `color-mix(in srgb, ${color} 14%, var(--surface-strong))`,
+    color: `color-mix(in srgb, ${color} 72%, var(--text) 28%)`,
+    borderColor: `color-mix(in srgb, ${color} 28%, var(--line-strong))`
   };
 }
 
